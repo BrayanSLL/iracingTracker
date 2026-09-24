@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <title>Delta</title>
+    <style>
+        :root { --bg: #121211; --text: #fff; --muted: #8f8e85; --gain: #3987e5; --loss: #e66767; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; }
+        body {
+            background: var(--bg); color: var(--text); overflow: hidden; user-select: none; cursor: move;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-variant-numeric: tabular-nums;
+            display: flex; flex-direction: column; justify-content: center; padding: 10px 16px;
+            border: 1px solid #333331;
+        }
+        .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+        .delta { font-size: 44px; font-weight: 800; line-height: 1.05; }
+        .delta.gain { color: var(--gain); }
+        .delta.loss { color: var(--loss); }
+        .row { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-top: 4px; }
+        .row b { color: var(--text); font-weight: 600; }
+        .waiting { font-size: 15px; color: var(--muted); }
+    </style>
+</head>
+<body>
+<div class="label">Delta vs ton record</div>
+<div class="delta" id="delta">—</div>
+<div class="row"><span>Prévu <b id="predicted">—</b></span><span>Record <b id="record">—</b></span></div>
+
+<script>
+    const $ = id => document.getElementById(id);
+    function fmtTime(s) {
+        if (s == null) return '—';
+        const ms = Math.round(s * 1000), m = Math.floor(ms / 60000);
+        return `${m}:${((ms % 60000) / 1000).toFixed(3).padStart(6, '0')}`;
+    }
+    async function refresh() {
+        try {
+            const s = await (await fetch('/api/status')).json();
+            const el = $('delta');
+            if (!s.connected || !s.on_track) {
+                el.className = 'delta waiting';
+                el.textContent = s.connected ? 'Pas en piste' : 'iRacing non lancé';
+            } else if (s.record == null) {
+                el.className = 'delta waiting';
+                el.textContent = 'Pas encore de record ici';
+            } else if (s.delta == null) {
+                el.className = 'delta';
+                el.textContent = '—';
+            } else {
+                el.className = 'delta ' + (s.delta > 0 ? 'loss' : 'gain');
+                el.textContent = (s.delta > 0 ? '+' : '−') + Math.abs(s.delta).toFixed(2);
+            }
+            $('predicted').textContent = fmtTime(s.predicted);
+            $('record').textContent = fmtTime(s.record);
+        } catch (err) {
+            $('delta').className = 'delta waiting';
+            $('delta').textContent = 'Serveur injoignable';
+        }
+    }
+    setInterval(refresh, 100);
+    refresh();
+</script>
+</body>
+</html>

@@ -88,8 +88,93 @@ class RecorderTest(unittest.TestCase):
                          db.query("SELECT COUNT(*) AS n FROM laps")[0]["n"])
 
 
-if __name__ == "__main__":
-    unittest.main()
+class AnalysisFeaturesTest(RecorderTest):
+    """Réutilise les tours simulés de RecorderTest."""
+
+    def test_corners_map_and_advice(self):
+        laps = db.list_laps(self.recorder.session_id)
+        a, b = db.get_trace(laps[1]["id"]), db.get_trace(laps[2]["id"])
+        result = analysis.compare(a, b)
+        corners = analysis.corner_analysis(result, 4000.0)
+        self.assertEqual(len(corners), 6)  # le circuit de démo a 6 virages
+        self.assertAlmostEqual(sum(c["time_lost"] for c in corners), result["delta"][-1], delta=0.5)
+        track = analysis.track_map(b, result["d"])
+        # la carte reconstituée fait à peu près la taille d'un circuit de 4 km
+        width = max(track["x"]) - min(track["x"])
+        self.assertTrue(300 < width < 2500, width)
+        self.assertAlmostEqual(track["x"][0], track["x"][-1], delta=30)
+
+    def test_compare_endpoint_with_record(self):
+        sid = self.recorder.session_id
+        detail = self.client.get(f"/api/sessions/{sid}").get_json()
+        self.assertIsNotNone(detail["record"])
+        lap_id = detail["laps"][-1]["id"]
+        data = self.client.get(f"/api/compare?lap={lap_id}&ref={detail['record']['id']}").get_json()
+        self.assertIn("corners", data)
+        self.assertIsNotNone(data["map"])
+
+    def test_live_delta_against_record(self):
+        self.assertIsNotNone(self.recorder.record)
+        drive(self.recorder, self.fake, 30)
+        status = self.recorder.status()
+        self.assertIsNotNone(status["delta"])
+        self.assertLess(abs(status["delta"]), 5)
+
+    def test_rename_and_record_history(self):
+        sid = self.recorder.session_id
+        self.assertEqual(self.client.patch(f"/api/sessions/{sid}", json={"name": "Test setup", "note": "moins d'appui"}).status_code, 204)
+        session = db.query_one("SELECT * FROM sessions WHERE id = ?", (sid,))
+        self.assertEqual((session["name"], session["note"]), ("Test setup", "moins d'appui"))
+        history = self.client.get("/api/records?car=Voiture de démo&track=Circuit de démo").get_json()
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["record"], history[0]["session_best"])
+
+
+class LapDeleteAndBackupTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        db.DB_PATH = Path(self.tmp.name) / "sessions.db"
+        db.init_db()
+        fake = FakeIRSDK(seed=1)
+        main.recorder = telemetry.TelemetryRecorder(ir=fake, waiter=DemoWaiter(fake, 0))  # jamais démarré
+        self.client = main.app.test_client()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def make_session(self, session_type):
+        sid = db.create_session("Spa", 7000.0, "MX-5", session_type)
+        lap_id = db.insert_lap(sid, {"lap_number": 1, "lap_time": 150.0, "sectors": None, "fuel_used": 2.0,
+                                     "fuel_left": 20.0, "max_speed_kmh": 200.0, "throttle_avg": 0.6,
+                                     "brake_avg": 0.1, "flag": None}, {"t": [0, 1], "d": [0, 1]})
+        return sid, lap_id
+
+    def test_lap_delete_only_in_race(self):
+        _, practice_lap = self.make_session("Practice")
+        _, race_lap = self.make_session("Race")
+        self.assertEqual(self.client.delete(f"/api/laps/{practice_lap}").status_code, 403)
+        self.assertEqual(self.client.delete(f"/api/laps/{race_lap}").status_code, 204)
+        self.assertIsNone(db.get_lap(race_lap))
+        self.assertIsNone(db.get_trace(race_lap))
+        self.assertIsNotNone(db.get_lap(practice_lap))
+
+    def test_backup_and_restore(self):
+        self.make_session("Practice")
+        backup = self.client.get("/api/backup")
+        self.assertEqual(backup.status_code, 200)
+        content = backup.data
+        backup.close()
+        self.make_session("Race")  # modifié après la sauvegarde
+        self.assertEqual(len(db.list_sessions()), 2)
+        import io
+        res = self.client.post("/api/restore", data={"file": (io.BytesIO(content), "sauvegarde.db")},
+                               content_type="multipart/form-data")
+        self.assertEqual(res.status_code, 200, res.get_json())
+        self.assertEqual(len(db.list_sessions()), 1)
+        self.assertTrue((db.DB_PATH.parent / res.get_json()["safety_copy"]).exists())
+        bad = self.client.post("/api/restore", data={"file": (io.BytesIO(b"pas une base"), "x.db")},
+                               content_type="multipart/form-data")
+        self.assertEqual(bad.status_code, 400)
 
 
 class ObjectivesTest(unittest.TestCase):
@@ -137,3 +222,7 @@ class ObjectivesTest(unittest.TestCase):
         # une seconde évaluation ne redonne pas d'XP
         self.assertEqual(objectives.evaluate("MX-5", "Spa"), [])
         self.assertEqual(objectives.profile()["xp"], profile["xp"])
+
+
+if __name__ == "__main__":
+    unittest.main()

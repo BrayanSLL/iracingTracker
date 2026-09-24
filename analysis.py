@@ -1,4 +1,5 @@
 """Calculs sur les tours : nettoyage des traces, secteurs, comparaison, statistiques."""
+import math
 import statistics
 from bisect import bisect_left
 
@@ -104,3 +105,133 @@ def session_stats(laps):
         stats["best_sectors"] = best
         stats["ideal_lap"] = sum(best)
     return stats
+
+
+# --- carte du circuit ------------------------------------------------------------------------
+
+def track_map(trace, grid):
+    """Reconstitue le tracé à partir du cap (YawNorth) et de la vitesse, puis referme la boucle.
+
+    Renvoie les coordonnées x/y (mètres) sur la grille de distance, ou None si la trace n'a pas de cap.
+    """
+    yaw = trace.get("yaw")
+    if not yaw or len(yaw) < 10:
+        return None
+    t, speed = trace["t"], trace["speed"]
+    xs, ys, dist = [0.0], [0.0], [0.0]
+    for i in range(1, len(t)):
+        step = max(0.0, t[i] - t[i - 1]) * speed[i] / 3.6
+        xs.append(xs[-1] + step * math.sin(yaw[i]))
+        ys.append(ys[-1] + step * math.cos(yaw[i]))
+        dist.append(dist[-1] + step)
+    total = dist[-1] or 1.0
+    ex, ey = xs[-1] - xs[0], ys[-1] - ys[0]  # dérive accumulée : on la répartit sur le tour
+    xs = [x - ex * d / total for x, d in zip(xs, dist)]
+    ys = [y - ey * d / total for y, d in zip(ys, dist)]
+    return {"x": [_interp(trace["d"], xs, g) for g in grid],
+            "y": [_interp(trace["d"], ys, g) for g in grid]}
+
+
+# --- analyse virage par virage ---------------------------------------------------------------
+
+def _smooth(values, window):
+    if window <= 1:
+        return list(values)
+    out, acc, n = [], 0.0, len(values)
+    half = window // 2
+    prefix = [0.0]
+    for v in values:
+        acc += v
+        prefix.append(acc)
+    for i in range(n):
+        a, b = max(0, i - half), min(n, i + half + 1)
+        out.append((prefix[b] - prefix[a]) / (b - a))
+    return out
+
+
+def find_corners(speed, min_drop=12.0):
+    """Indices (début de freinage, point de corde, sortie) des virages, repérés par les minimums de vitesse."""
+    n = len(speed)
+    if n < 50:
+        return []
+    s = _smooth(speed, max(1, n // 300))
+    span = max(1, n // 60)  # un minimum doit l'être sur ±1,7 % du tour
+    apexes = []
+    for i in range(1, n - 1):
+        lo, hi = max(0, i - span), min(n, i + span + 1)
+        if s[i] == min(s[lo:hi]) and (not apexes or i - apexes[-1] > span):
+            apexes.append(i)
+    corners = []
+    for k, apex in enumerate(apexes):
+        prev_apex = apexes[k - 1] if k else 0
+        next_apex = apexes[k + 1] if k + 1 < len(apexes) else n - 1
+        start = max(range(prev_apex, apex + 1), key=lambda j: s[j])
+        end = max(range(apex, next_apex + 1), key=lambda j: s[j])
+        if s[start] - s[apex] >= min_drop:
+            corners.append((start, apex, end))
+    return corners
+
+
+def _corner_values(ch, d, start, end, to_pos):
+    speed, brake, throttle, t = ch["speed"], ch["brake"], ch["throttle"], ch["t"]
+    apex = min(range(start, end + 1), key=lambda j: speed[j])
+    brake_i = next((j for j in range(start, apex + 1) if brake[j] >= 0.1), None)
+    gas_i = next((j for j in range(apex, end + 1) if throttle[j] >= 0.5), None)
+    coast = sum(t[j] - t[j - 1] for j in range(start + 1, end + 1) if throttle[j] < 0.05 and brake[j] < 0.05)
+    return {
+        "brake_point": to_pos(d[brake_i]) if brake_i is not None else None,
+        "brake_max": max(brake[start:apex + 1]),
+        "min_speed": speed[apex],
+        "apex": to_pos(d[apex]),
+        "throttle_point": to_pos(d[gas_i]) if gas_i is not None else None,
+        "coast": coast,
+        "time": t[end] - t[start],
+    }
+
+
+def corner_analysis(result, length_m=None):
+    """Pour chaque virage : freinage, vitesse mini, remise des gaz, roue libre, temps perdu, conseils."""
+    d = result["d"]
+    base = result.get("ref") or result["lap"]
+    to_pos = (lambda x: x * length_m) if length_m else (lambda x: x * 100)
+    unit = "m" if length_m else "%"
+    corners = []
+    for number, (start, _, end) in enumerate(find_corners(base["speed"]), start=1):
+        lap = _corner_values(result["lap"], d, start, end, to_pos)
+        ref = _corner_values(result["ref"], d, start, end, to_pos) if result.get("ref") else None
+        corner = {"number": number, "start": to_pos(d[start]), "end": to_pos(d[end]),
+                  "lap": lap, "ref": ref, "time_lost": None, "advice": []}
+        if ref:
+            corner["time_lost"] = lap["time"] - ref["time"]
+            corner["advice"] = _advice(lap, ref, unit)
+        corners.append(corner)
+    return corners
+
+
+def _fmt_gap(value, unit):
+    return f"{abs(value):.0f} m" if unit == "m" else f"{abs(value):.1f} %"
+
+
+def _advice(lap, ref, unit):
+    tips, tol = [], 5 if unit == "m" else 0.15
+    if lap["brake_point"] is not None and ref["brake_point"] is not None:
+        gap = lap["brake_point"] - ref["brake_point"]
+        if gap < -tol:
+            tips.append(f"Tu freines {_fmt_gap(gap, unit)} plus tôt")
+        elif gap > tol:
+            tips.append(f"Tu freines {_fmt_gap(gap, unit)} plus tard")
+    if ref["brake_max"] - lap["brake_max"] >= 0.1:
+        tips.append(f"Freinage moins appuyé ({lap['brake_max'] * 100:.0f} % contre {ref['brake_max'] * 100:.0f} %)")
+    speed_gap = lap["min_speed"] - ref["min_speed"]
+    if abs(speed_gap) >= 2:
+        tips.append(f"Vitesse mini {'+' if speed_gap > 0 else '−'}{abs(speed_gap):.0f} km/h au point de corde")
+    if lap["throttle_point"] is not None and ref["throttle_point"] is not None:
+        gap = lap["throttle_point"] - ref["throttle_point"]
+        if gap > tol:
+            tips.append(f"Remise des gaz {_fmt_gap(gap, unit)} plus tard")
+        elif gap < -tol:
+            tips.append(f"Remise des gaz {_fmt_gap(gap, unit)} plus tôt")
+    coast_gap = lap["coast"] - ref["coast"]
+    if coast_gap >= 0.1:
+        tips.append(f"+{coast_gap:.1f} s en roue libre (ni gaz ni frein)".replace(".", ","))
+    return tips

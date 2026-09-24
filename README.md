@@ -26,20 +26,43 @@ par session, et tu supprimes ce que tu veux depuis l'interface. 🏁
 **Télémétrie**
 - Enregistrement de **chaque tour à 60 Hz** : vitesse, **accélérateur**, **frein**, rapport engagé, angle du volant
   (≈ un point tous les 80 cm à 180 km/h)
-- Comparaison d'un tour avec une référence (par défaut ton meilleur tour), alignés sur la distance
+- Comparaison d'un tour avec une référence alignée sur la distance. Par défaut, la référence est **ton record
+  toutes sessions confondues** sur ce couple voiture × circuit (🏆), mais tu peux choisir n'importe quel tour.
 - Courbe de **delta** : où tu perds et où tu gagnes du temps, mètre par mètre
 - Temps perdu ou gagné sur **10 secteurs**
+- **Analyse virage par virage** automatique : point de freinage, freinage maximal, vitesse minimale,
+  remise des gaz, temps en roue libre et temps perdu sur la référence, avec des conseils du type
+  « Tu freines 12 m plus tôt », « Vitesse mini −4 km/h au point de corde ». Les 3 virages qui coûtent
+  le plus sont marqués « à travailler ». Un clic sur un virage zoome tous les graphiques dessus.
+- **Carte du circuit** reconstituée à partir du cap et de la vitesse de la voiture, colorée selon le delta
+  (rouge = tu perds du temps, bleu = tu en gagnes), avec les numéros de virage. Le curseur des graphiques
+  y apparaît en direct.
 - Curseur et zoom synchronisés sur tous les graphiques (glisser pour zoomer, double-clic pour revenir)
+
+![Analyse virage par virage](docs/analyse.png)
 
 **Progression** : 115 objectifs par voiture et par circuit, XP et niveaux (voir plus bas).
 
-**En direct** : statut de connexion, rapport, vitesse, chrono du tour, barres gaz et frein.
+**En direct**
+- Statut de connexion, rapport, vitesse, chrono du tour, barres gaz et frein.
+- **Overlay du delta** : une petite fenêtre toujours au premier plan, sans bordure et déplaçable à la souris.
+  Elle affiche en direct ton écart avec ton record au même endroit de la piste, le temps prévu du tour et
+  ton record. Pour qu'elle s'affiche par-dessus le jeu, lance iRacing en mode **fenêtré sans bordure**
+  (borderless) : aucune fenêtre ne peut passer devant un jeu en plein écran exclusif.
+
+![Overlay du delta en direct](docs/overlay.png)
 
 **Sessions**
 - Une session est créée à chaque connexion et à chaque changement de session iRacing (essais → qualif → course),
   avec le circuit, la voiture et le type de session
 - Historique complet dans la barre de gauche, **suppression d'une session** (avec toute sa télémétrie) en un clic
+- **Nom de session modifiable** et **note libre** (« nouveau setup, moins d'appui »), enregistrés automatiquement
+- **Suppression d'un tour** (trafic, incident…) pour qu'il ne fausse pas les stats. Uniquement dans les sessions
+  de **course** : en essais et en qualif, tous les tours sont conservés.
 - Export CSV des tours d'une session
+- **Sauvegarde et restauration** de toute la base depuis la barre de gauche : sessions, télémétrie, objectifs
+  et XP. Avant une restauration, une copie de sécurité de la base actuelle est gardée dans `data/`.
+  La restauration est refusée pendant qu'iRacing est connecté.
 
 ---
 
@@ -76,6 +99,7 @@ L'application peut rester ouverte en permanence, elle se reconnecte toute seule 
 | `--demo-speed 10` | Démo accélérée (10× plus rapide) |
 | `--browser` | Ouvre l'interface dans le navigateur au lieu d'une fenêtre |
 | `--no-gui` | Serveur seul, interface à ouvrir à la main sur `http://127.0.0.1:5000` |
+| `--no-overlay` | N'ouvre pas la fenêtre du delta en direct (elle reste accessible sur `http://127.0.0.1:5000/overlay`) |
 | `--port 5001` | Change le port local |
 
 Pour essayer tout de suite : `python main.py --demo --demo-speed 10`
@@ -100,7 +124,7 @@ Windows, mise à jour 60 fois par seconde, et signale chaque mise à jour par un
 |---|---|
 | `main.py` | Point d'entrée : lance la capture, le serveur local et la fenêtre |
 | `telemetry.py` | Lecture d'iRacing (via [`pyirsdk`](https://github.com/kutu/pyirsdk)), détection des tours, enregistrement des traces |
-| `analysis.py` | Nettoyage des traces, secteurs, alignement de deux tours, delta, statistiques |
+| `analysis.py` | Nettoyage des traces, secteurs, alignement de deux tours, delta, statistiques, virages, carte |
 | `db.py` | Base SQLite (sessions, tours, traces) |
 | `objectives.py` | Objectifs (modèles, réplication par voiture et circuit, évaluation), XP et niveaux |
 | `demo.py` | Faux iRacing pour la démo et les tests |
@@ -113,12 +137,21 @@ Windows, mise à jour 60 fois par seconde, et signale chaque mise à jour par un
   souvent encore le temps du tour *précédent* : on attend qu'il change (3 s maximum) avant d'enregistrer.
   Si iRacing ne donne pas de temps valide (`-1`), le tour est gardé sans temps.
 - **Trace du tour** : chaque échantillon contient le temps depuis le début du tour, la position sur le tour
-  (`LapDistPct`, de 0 à 1), la vitesse, l'accélérateur, le frein, le rapport et le volant. Les échantillons
+  (`LapDistPct`, de 0 à 1), la vitesse, l'accélérateur, le frein, le rapport, le volant et le cap (`YawNorth`). Les échantillons
   « de l'autre côté de la ligne » sont retirés. Chaque trace est compressée (environ 100 Ko par tour).
 - **Comparaison** : les deux tours sont ré-échantillonnés sur la même grille de distance. Le delta est
   la différence de temps au même endroit de la piste.
 - **Secteurs** : le tour est découpé en 10 portions de même longueur. Le **tour idéal** est la somme des
   meilleurs secteurs des tours propres de la session.
+- **Virages** : ils sont repérés automatiquement par les minimums de vitesse (au moins 12 km/h de perte)
+  sur le tour de référence. Le point de freinage est le premier point où le frein dépasse 10 %, et la remise
+  des gaz le premier point après la corde où l'accélérateur dépasse 50 %.
+- **Carte** : iRacing ne donne pas de coordonnées GPS en direct. Le tracé est reconstitué en intégrant la
+  vitesse selon le cap, puis la petite dérive accumulée est corrigée pour refermer la boucle. Les tours
+  enregistrés avant cette version n'ont pas le cap et n'ont donc pas de carte.
+- **Delta en direct** : au démarrage d'une session, la trace de ton record sur ce couple voiture × circuit
+  est chargée. À chaque instant, le delta est ton temps depuis la ligne moins le temps du record au même
+  endroit de la piste. Si tu bats ton record, il devient la nouvelle référence dès le tour suivant.
 - **Suppression** : supprimer une session efface ses tours et ses traces, puis compacte la base.
   La session en cours d'enregistrement ne peut pas être supprimée.
 
@@ -126,7 +159,7 @@ Windows, mise à jour 60 fois par seconde, et signale chaque mise à jour par un
 
 | Table | Contenu |
 |---|---|
-| `sessions` | date, circuit, longueur du circuit, voiture, type de session |
+| `sessions` | date, nom, note, circuit, longueur du circuit, voiture, type de session |
 | `laps` | numéro, temps, secteurs, carburant consommé et restant, vitesse max, gaz et frein moyens, marquage |
 | `traces` | télémétrie 60 Hz du tour (JSON compressé) |
 | `cars`, `car_tracks` | voitures et couples voiture × circuit connus |
@@ -157,6 +190,8 @@ L'onglet **Progression** transforme tes sessions en jeu.
 - **Notifications** à chaque objectif débloqué et à chaque passage de niveau, pendant que tu roules.
 - Au démarrage, les objectifs sont recalculés sur les sessions déjà enregistrées.
 - Supprimer une session ne retire pas les objectifs déjà réussis ni leur XP.
+- **Historique du record** : pour chaque circuit, une courbe montre l'évolution de ton record semaine après
+  semaine, avec le meilleur tour de chaque session.
 - Pour ajouter des objectifs, modifie `CAR_TEMPLATES` ou `TRACK_TEMPLATES` dans `objectives.py`. Ils sont
   ajoutés automatiquement à toutes les voitures au prochain tour.
 
@@ -188,9 +223,9 @@ Un tour gêné par le trafic fausse aussi la comparaison.
 
 ## Idées pour la suite
 
-1. Comparer avec le meilleur tour d'**une autre session** (même circuit, même voiture)
-2. Détection automatique des points de freinage et des zones de roue libre, virage par virage
-3. Carte du circuit (`Lat` / `Lon`) colorée par le delta
+1. Objectifs de pilotage tirés de l'analyse des virages (« aucun virage avec plus de 0,5 s de roue libre »…)
+2. Défis de la semaine avec bonus d'XP
+3. Incidents (`PlayerCarMyIncidentCount`) : objectifs « tours sans incident »
 4. Stratégie carburant en course : tours restants et quantité à remettre
 5. Import des fichiers `.ibt` enregistrés par iRacing
 
@@ -205,6 +240,8 @@ Un tour gêné par le trafic fausse aussi la comparaison.
 | Le premier tour est marqué « stand » | Normal : c'est l'out-lap. |
 | La fenêtre ne s'ouvre pas | L'application ouvre alors le navigateur. Tu peux aussi utiliser `python main.py --browser`. Sur Windows, pywebview a besoin de Microsoft Edge WebView2, déjà installé sur Windows 10 et 11 à jour. |
 | `ModuleNotFoundError` | Active l'environnement virtuel (`venv\Scripts\activate`), puis relance `pip install -r requirements.txt`. |
+| L'overlay n'apparaît pas par-dessus le jeu | Passe iRacing en mode fenêtré sans bordure (Options → Graphismes). |
+| La carte du circuit est inversée (en miroir) | Le sens de `YawNorth` n'a pas pu être vérifié sans iRacing. Signale-le : c'est une ligne à changer dans `analysis.track_map`. |
 | Port 5000 déjà utilisé | `python main.py --port 5001` |
 
 ## Ressources

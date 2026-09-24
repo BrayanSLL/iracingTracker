@@ -17,6 +17,14 @@ LAP_TIME_LAG = 6       # ticks avant que LapLastLapTime soit à jour (comme le v
 
 # (position du virage en m, vitesse mini en m/s, sens)
 CORNERS = [(450, 24, 1), (1150, 38, -1), (1700, 18, 1), (2350, 45, -1), (2900, 30, 1), (3600, 22, -1)]
+# angle de chaque virage (degrés, positif = à droite) : la somme fait 360° pour que le circuit boucle
+TURN_ANGLES = [110, -50, 130, -40, 120, 90]
+
+
+def heading(dist):
+    """Cap de la voiture (radians, 0 = nord, sens horaire) à une distance donnée du tour."""
+    return sum(math.radians(angle) / (1 + math.exp(-(dist - pos) / 25))
+               for (pos, _, _), angle in zip(CORNERS, TURN_ANGLES))
 
 
 def speed_profile(corner_speeds, brake_offsets):
@@ -103,6 +111,7 @@ class FakeIRSDK:
             "Brake": self.brake,
             "Gear": self.gear,
             "SteeringWheelAngle": self.steer,
+            "YawNorth": (heading(self.dist) + math.pi) % (2 * math.pi) - math.pi,
             "FuelLevel": self.fuel,
             "WeekendInfo": {"TrackDisplayName": "Circuit de démo", "TrackLength": "4.00 km"},
             "DriverInfo": {"DriverCarIdx": 0, "Drivers": [{"CarIdx": 0, "CarScreenName": "Voiture de démo"}]},
@@ -133,8 +142,8 @@ class FakeIRSDK:
             self.throttle = 1.0 if target >= V_MAX - 0.5 else 0.3 + self.rng.uniform(0, 0.05)
             self.brake = 0.0
         self.gear = min(6, 1 + int(self.speed / 14))
-        self.steer = sum(direction * 1.2 * math.exp(-((self.dist - pos) / 45) ** 2)
-                         for pos, _, direction in CORNERS)
+        self.steer = sum(math.copysign(1.2, angle) * math.exp(-((self.dist - pos) / 45) ** 2)
+                         for (pos, _, _), angle in zip(CORNERS, TURN_ANGLES))
         self.fuel -= 0.00045 + 0.0012 * self.throttle
         if self.fuel < 2.0:
             self.fuel = 45.0  # ravitaillement « magique » pour que la démo tourne indéfiniment

@@ -70,6 +70,7 @@ class TelemetryRecorder:
         self.track = None
         self.car = None
         self.live = {}
+        self.record = None  # {"lap_time", "d", "t"} : ton record sur ce couple voiture × circuit
         self._reset_lap_tracking()
 
     # --- état interne -------------------------------------------------------
@@ -90,7 +91,7 @@ class TelemetryRecorder:
         self.flag = flag
         self.fuel_start = fuel_start
         self.lap_start = lap_start  # SessionTime au début du tour
-        self.trace = {"t": [], "d": [], "speed": [], "throttle": [], "brake": [], "gear": [], "steer": []}
+        self.trace = {"t": [], "d": [], "speed": [], "throttle": [], "brake": [], "gear": [], "steer": [], "yaw": []}
 
     # --- connexion ----------------------------------------------------------
 
@@ -125,9 +126,28 @@ class TelemetryRecorder:
 
         session_id = db.create_session(track, track_length, car, session_type)
         objectives.ensure_car(car, track)  # voiture / circuit inconnus : on réplique les objectifs
+        self._load_record()
         with self.lock:
             self.session_id, self.track, self.car = session_id, track, car
         print(f"[telemetry] nouvelle session #{session_id} : {track} / {car} ({session_type})")
+
+    def _load_record(self):
+        """Charge la trace de ton meilleur tour ici (toutes sessions) pour le delta en direct."""
+        row = db.record_lap(self.car, self.track)
+        trace = db.get_trace(row["id"]) if row else None
+        self.record = {"lap_time": row["lap_time"], "d": trace["d"], "t": trace["t"]} if trace else None
+
+    def _live_delta(self, lap_dist, lap_time):
+        """Écart en direct avec le record, au même endroit du tour (positif = plus lent)."""
+        if not self.record or lap_dist is None or lap_time is None or self.flag == "partial":
+            return None
+        if lap_time < 1.0 and lap_dist > 0.5:  # juste après la ligne, LapDistPct n'est pas encore revenu à 0
+            return None
+        ref_time = analysis._interp(self.record["d"], self.record["t"], lap_dist)
+        if ref_time is None:
+            return None
+        delta = lap_time - ref_time
+        return delta if abs(delta) < 30 else None  # valeur aberrante (instant du passage de ligne)
 
     # --- boucle -------------------------------------------------------------
 
@@ -159,10 +179,15 @@ class TelemetryRecorder:
             on_track = bool(ir["IsOnTrack"])
             on_pit_road = bool(ir["OnPitRoad"])
 
+            current_lap_time = session_time - self.lap_start if self.lap_start is not None else None
+            delta = self._live_delta(ir["LapDistPct"], current_lap_time) if on_track else None
             with self.lock:
                 self.live = {"on_track": on_track, "speed_kmh": speed_kmh, "fuel_l": fuel,
                              "throttle": throttle, "brake": brake, "gear": gear,
-                             "lap": ir["Lap"], "lap_time": ir["LapCurrentLapTime"]}
+                             "lap": ir["Lap"], "lap_time": ir["LapCurrentLapTime"],
+                             "delta": delta,
+                             "record": self.record["lap_time"] if self.record else None,
+                             "predicted": self.record["lap_time"] + delta if delta is not None else None}
 
             # 1. Un tour vient de finir : on attend que LapLastLapTime change
             #    (il est mis à jour avec un léger retard après la ligne).
@@ -227,6 +252,7 @@ class TelemetryRecorder:
             trace["brake"].append(round(brake, 4))
             trace["gear"].append(gear)
             trace["steer"].append(round((ir["SteeringWheelAngle"] or 0.0) * RAD_TO_DEG, 1))
+            trace["yaw"].append(round(ir["YawNorth"] or 0.0, 5))
 
             self.prev_last_lap_time = last_lap_time
         finally:
@@ -243,6 +269,8 @@ class TelemetryRecorder:
         except Exception as exc:  # session supprimée entre-temps, disque plein…
             print(f"[telemetry] tour {lap['lap_number']} non enregistré : {exc!r}")
             return
+        if lap_time is not None and lap["flag"] is None and (not self.record or lap_time < self.record["lap_time"]):
+            self._load_record()  # nouveau record : il devient la référence du delta en direct
         try:
             objectives.evaluate(self.car, self.track)
         except Exception as exc:

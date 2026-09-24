@@ -129,7 +129,9 @@ async function refreshProgress() {
             ? `Ta référence : ${fmtTime(data.baseline)} (meilleur de tes 3 premiers tours propres) · ton record : ${fmtTime(data.pb)}`
             : 'Référence pas encore établie : fais 3 tours propres sur ce circuit.';
         renderObjectives($('track-objectives'), data.objectives);
+        renderRecordChart(await api(`/api/records?car=${encodeURIComponent(progress.car)}&track=${encodeURIComponent(progress.track)}`));
     } else {
+        renderRecordChart([]);
         $('track-info').textContent = '';
         $('track-objectives').innerHTML = '';
     }
@@ -185,3 +187,42 @@ async function pollUnlocks() {
 refreshProfile().catch(console.error);
 pollUnlocks().catch(console.error);
 setInterval(() => pollUnlocks().catch(console.error), 2000);
+
+// --- historique du record -------------------------------------------------------------
+
+let recordChart = null;
+
+function renderRecordChart(rows) {
+    if (recordChart) { recordChart.destroy(); recordChart = null; }
+    $('record-box').hidden = rows.length === 0;
+    if (!rows.length) return;
+    const container = $('record-chart');
+    const x = rows.map(r => new Date(r.started_at).getTime() / 1000);
+    if (x.length === 1) x.push(x[0] + 3600);  // une seule session : on étire un peu l'axe
+    const record = rows.map(r => r.record);
+    const best = rows.map(r => r.session_best);
+    if (record.length < x.length) { record.push(record[record.length - 1]); best.push(null); }
+    const dateFmt = v => new Date(v * 1000).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+    recordChart = new uPlot({
+        width: container.clientWidth,
+        height: 240,
+        scales: { x: { time: true }, y: { range: padRange(0.5) } },
+        cursor: { drag: { x: false, y: false } },
+        axes: [
+            baseAxis({ values: (u, splits) => splits.map(dateFmt) }),
+            baseAxis({ size: 70, values: (u, splits) => splits.map(v => fmtTime(v)) }),
+        ],
+        series: [
+            { label: 'Date', value: (u, v) => v == null ? '—' : new Date(v * 1000).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }) },
+            { label: 'Record', stroke: cssVar('--series-1'), width: 2, paths: uPlot.paths.stepped({ align: 1 }),
+              points: { show: true, size: 6, fill: cssVar('--series-1') }, value: (u, v) => fmtTime(v) },
+            { label: 'Meilleur tour de la session', stroke: cssVar('--series-2'), paths: () => null,
+              points: { show: true, size: 8, fill: cssVar('--series-2'), stroke: cssVar('--surface-1'), width: 2 },
+              value: (u, v) => fmtTime(v) },
+        ],
+    }, [x, record, best], container);
+}
+
+new ResizeObserver(() => {
+    if (recordChart) recordChart.setSize({ width: $('record-chart').clientWidth, height: recordChart.height });
+}).observe($('view-progress'));

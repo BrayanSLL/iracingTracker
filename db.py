@@ -99,10 +99,22 @@ def query_one(sql, params=()):
     return rows[0] if rows else None
 
 
+# Colonnes ajoutées après la première version : ajoutées aux bases existantes au démarrage.
+MIGRATIONS = {
+    "sessions": {"name": "TEXT", "note": "TEXT"},
+}
+
+
 def init_db():
     conn = connect()
     try:
         conn.executescript(SCHEMA)
+        for table, columns in MIGRATIONS.items():
+            existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            for column, kind in columns.items():
+                if column not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+        conn.commit()
     finally:
         conn.close()
 
@@ -139,6 +151,58 @@ def list_sessions():
         GROUP BY s.id
         ORDER BY s.id DESC
     """)
+
+
+def update_session(session_id, name, note):
+    execute("UPDATE sessions SET name = ?, note = ? WHERE id = ?", (name or None, note or None, session_id))
+
+
+def is_race(session):
+    return "race" in (session.get("session_type") or "").lower()
+
+
+# --- sauvegarde / restauration ----------------------------------------------------
+
+REQUIRED_TABLES = {"sessions", "laps", "traces"}
+
+
+def backup_to(path):
+    """Copie cohérente de la base (même pendant un enregistrement) via l'API de sauvegarde SQLite."""
+    src, dst = connect(), sqlite3.connect(path)
+    try:
+        src.backup(dst)
+    finally:
+        dst.close()
+        src.close()
+
+
+def restore_from(path):
+    """Remplace le contenu de la base par celui d'une sauvegarde, après l'avoir vérifiée.
+
+    Une copie de la base actuelle est d'abord gardée dans data/ (au cas où).
+    """
+    src = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        try:
+            tables = {r[0] for r in src.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+            healthy = src.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        except sqlite3.DatabaseError as exc:
+            raise ValueError("ce fichier n'est pas une sauvegarde valide") from exc
+        if not healthy:
+            raise ValueError("fichier de sauvegarde corrompu")
+        if not REQUIRED_TABLES <= tables:
+            raise ValueError("ce fichier n'est pas une sauvegarde de l'application")
+        safety = DB_PATH.parent / f"sessions-avant-restauration-{datetime.now():%Y%m%d-%H%M%S}.db"
+        backup_to(safety)
+        dst = connect()
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+    init_db()  # met à niveau une sauvegarde ancienne
+    return safety.name
 
 
 # --- tours --------------------------------------------------------------------
@@ -183,3 +247,45 @@ def get_lap(lap_id):
 def get_trace(lap_id):
     row = query_one("SELECT data FROM traces WHERE lap_id = ?", (lap_id,))
     return json.loads(zlib.decompress(row["data"])) if row else None
+
+
+def delete_lap(lap_id):
+    execute("DELETE FROM laps WHERE id = ?", (lap_id,))
+
+
+def record_lap(car, track, exclude_id=None):
+    """Meilleur tour propre (avec télémétrie) de cette voiture sur ce circuit, toutes sessions confondues."""
+    return query_one("""
+        SELECT l.id, l.lap_time, l.lap_number, l.session_id, l.sectors, s.started_at, s.name AS session_name
+        FROM laps l
+        JOIN sessions s ON s.id = l.session_id
+        JOIN traces t ON t.lap_id = l.id
+        WHERE s.car IS ? AND s.track IS ? AND l.flag IS NULL AND l.lap_time IS NOT NULL AND l.id IS NOT ?
+        ORDER BY l.lap_time LIMIT 1
+    """, (car, track, exclude_id))
+
+
+def lap_meta(lap_id):
+    row = query_one("""
+        SELECT l.id, l.lap_number, l.lap_time, l.sectors, l.session_id, s.started_at, s.name AS session_name,
+               s.car, s.track, s.track_length_m
+        FROM laps l JOIN sessions s ON s.id = l.session_id WHERE l.id = ?
+    """, (lap_id,))
+    if row:
+        row["sectors"] = json.loads(row["sectors"]) if row["sectors"] else None
+    return row
+
+
+def record_history(car, track):
+    """Meilleur tour propre de chaque session et évolution du record, dans l'ordre chronologique."""
+    rows = query("""
+        SELECT s.id AS session_id, s.started_at, s.name, MIN(l.lap_time) AS session_best
+        FROM sessions s JOIN laps l ON l.session_id = s.id
+        WHERE s.car IS ? AND s.track IS ? AND l.flag IS NULL AND l.lap_time IS NOT NULL
+        GROUP BY s.id ORDER BY s.started_at, s.id
+    """, (car, track))
+    record = None
+    for row in rows:
+        record = row["session_best"] if record is None else min(record, row["session_best"])
+        row["record"] = record
+    return rows

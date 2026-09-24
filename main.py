@@ -3,14 +3,18 @@
     python main.py              # ouvre la fenêtre de l'application
     python main.py --browser    # ouvre l'interface dans le navigateur à la place
     python main.py --demo       # essaie l'application sans iRacing (voiture simulée)
+    http://127.0.0.1:5000/overlay  # delta en direct (ouvert automatiquement dans une petite fenêtre)
 """
 import argparse
 import csv
 import io
+import os
+import tempfile
 import threading
 import webbrowser
+from datetime import datetime
 
-from flask import Flask, Response, abort, jsonify, render_template, request
+from flask import Flask, Response, abort, jsonify, render_template, request, send_file
 from werkzeug.serving import make_server
 
 import analysis
@@ -46,7 +50,9 @@ def session_detail(session_id):
     if not session:
         abort(404)
     laps = db.list_laps(session_id)
-    return jsonify({"session": session, "laps": laps, "stats": analysis.session_stats(laps)})
+    record = db.record_lap(session["car"], session["track"])
+    return jsonify({"session": session, "laps": laps, "stats": analysis.session_stats(laps),
+                    "record": record, "is_race": db.is_race(session)})
 
 
 @app.delete("/api/sessions/<int:session_id>")
@@ -73,16 +79,89 @@ def export_csv(session_id):
 
 @app.get("/api/compare")
 def compare():
-    """Télémétrie d'un tour, alignée sur la distance, avec un tour de référence optionnel."""
-    lap = db.get_lap(request.args.get("lap", type=int))
+    """Télémétrie d'un tour, alignée sur la distance, avec un tour de référence optionnel
+    (de n'importe quelle session), l'analyse virage par virage et la carte du circuit."""
+    lap = db.lap_meta(request.args.get("lap", type=int) or 0)
     if not lap:
         abort(404)
     lap_trace = db.get_trace(lap["id"])
     if not lap_trace:
         return jsonify({"error": "Pas de télémétrie enregistrée pour ce tour."}), 404
     ref_id = request.args.get("ref", type=int)
-    ref_trace = db.get_trace(ref_id) if ref_id and ref_id != lap["id"] else None
-    return jsonify(analysis.compare(lap_trace, ref_trace))
+    ref = db.lap_meta(ref_id) if ref_id and ref_id != lap["id"] else None
+    ref_trace = db.get_trace(ref["id"]) if ref else None
+    result = analysis.compare(lap_trace, ref_trace)
+    result["lap_meta"] = lap
+    result["ref_meta"] = ref if ref_trace else None
+    result["corners"] = analysis.corner_analysis(result, lap["track_length_m"])
+    result["map"] = analysis.track_map(ref_trace or lap_trace, result["d"])
+    if result["map"] is None and ref_trace:
+        result["map"] = analysis.track_map(lap_trace, result["d"])
+    return jsonify(result)
+
+
+@app.patch("/api/sessions/<int:session_id>")
+def rename_session(session_id):
+    data = request.get_json(silent=True) or {}
+    db.update_session(session_id, (data.get("name") or "").strip()[:120], (data.get("note") or "").strip()[:2000])
+    return "", 204
+
+
+@app.delete("/api/laps/<int:lap_id>")
+def delete_lap(lap_id):
+    lap = db.lap_meta(lap_id)
+    if not lap:
+        abort(404)
+    session = db.query_one("SELECT * FROM sessions WHERE id = ?", (lap["session_id"],))
+    if not db.is_race(session):
+        return jsonify({"error": "La suppression d'un tour n'est possible que dans une session de course."}), 403
+    db.delete_lap(lap_id)
+    return "", 204
+
+
+@app.get("/api/records")
+def records():
+    return jsonify(db.record_history(request.args.get("car"), request.args.get("track")))
+
+
+@app.get("/api/backup")
+def backup():
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    try:
+        db.backup_to(tmp.name)
+        with open(tmp.name, "rb") as f:
+            content = f.read()
+    finally:
+        os.unlink(tmp.name)  # Windows : le fichier doit être refermé avant d'être supprimé
+    name = f"iracing-telemetry-sauvegarde-{datetime.now():%Y-%m-%d_%H%M}.db"
+    return send_file(io.BytesIO(content), as_attachment=True, download_name=name,
+                     mimetype="application/octet-stream")
+
+
+@app.post("/api/restore")
+def restore():
+    if recorder.status()["connected"]:
+        return jsonify({"error": "Ferme iRacing (ou quitte la session) avant de restaurer une sauvegarde."}), 409
+    upload = request.files.get("file")
+    if not upload:
+        return jsonify({"error": "Aucun fichier reçu."}), 400
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    try:
+        upload.save(tmp.name)
+        safety = db.restore_from(tmp.name)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    finally:
+        os.unlink(tmp.name)
+    objectives.evaluate_all()
+    return jsonify({"safety_copy": safety})
+
+
+@app.get("/overlay")
+def overlay():
+    return render_template("overlay.html")
 
 
 @app.get("/api/profile")
@@ -124,11 +203,21 @@ def unlocks():
     return jsonify(objectives.recent_unlocks(request.args.get("after", 0, type=int)))
 
 
-def open_window(url):
-    """Ouvre une vraie fenêtre (pywebview) ; se rabat sur le navigateur si ce n'est pas possible."""
+def open_window(url, overlay=True):
+    """Ouvre la fenêtre de l'application (pywebview) et l'overlay du delta en direct.
+
+    Se rabat sur le navigateur si pywebview n'est pas disponible.
+    """
     try:
         import webview  # pip install pywebview
-        webview.create_window("iRacing Telemetry", url, width=1440, height=920, min_size=(960, 640))
+        webview.settings["ALLOW_DOWNLOADS"] = True  # export CSV et sauvegarde de la base
+        main_window = webview.create_window("iRacing Telemetry", url, width=1440, height=920, min_size=(960, 640))
+        if overlay:
+            # petite fenêtre sans bordure, toujours au premier plan (déplaçable à la souris)
+            overlay_window = webview.create_window("Delta", f"{url}/overlay", width=300, height=128, x=40, y=40,
+                                                   frameless=True, easy_drag=True, on_top=True, resizable=False,
+                                                   background_color="#121211")
+            main_window.events.closed += lambda: overlay_window.destroy()
         webview.start()  # bloque jusqu'à la fermeture de la fenêtre
         return True
     except Exception as exc:
@@ -142,6 +231,7 @@ def main():
     parser = argparse.ArgumentParser(description="iRacing Telemetry Logger")
     parser.add_argument("--port", type=int, default=5000)
     parser.add_argument("--browser", action="store_true", help="ouvrir dans le navigateur au lieu d'une fenêtre")
+    parser.add_argument("--no-overlay", action="store_true", help="ne pas ouvrir la fenêtre du delta en direct")
     parser.add_argument("--no-gui", action="store_true", help="serveur seul, sans ouvrir d'interface")
     parser.add_argument("--demo", action="store_true", help="voiture simulée, sans iRacing")
     parser.add_argument("--demo-speed", type=float, default=1.0, help="accélération de la démo (ex. 5)")
@@ -171,7 +261,7 @@ def main():
 
     web = threading.Thread(target=server.serve_forever, daemon=True, name="web")
     web.start()
-    if not open_window(url):
+    if not open_window(url, overlay=not args.no_overlay):
         while web.is_alive():  # mode navigateur : on garde le serveur actif (Ctrl+C pour quitter)
             web.join(0.5)
 

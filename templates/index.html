@@ -36,6 +36,13 @@
         <div class="sidebar-title">Sessions</div>
         <ul class="session-list" id="session-list"></ul>
         <div class="empty small" id="sessions-empty">Aucune session enregistrée.<br>Lance iRacing et monte en piste.</div>
+        <div class="backup">
+            <div class="sidebar-title">Sauvegarde</div>
+            <a class="btn block" href="/api/backup" download>Sauvegarder la base</a>
+            <label class="btn block" for="restore-file">Restaurer une sauvegarde…</label>
+            <input type="file" id="restore-file" accept=".db,.sqlite,.sqlite3" hidden>
+            <div class="muted small-text">Garde tes sessions, ta télémétrie et ta progression (XP, objectifs).</div>
+        </div>
     </aside>
 
     <main class="main" id="main">
@@ -45,9 +52,14 @@
 
         <div id="session-view" hidden>
             <section class="session-header">
-                <div>
-                    <h1 id="session-title">—</h1>
+                <div class="session-edit">
+                    <input class="session-name" id="session-name" type="text" maxlength="120"
+                           placeholder="Nom de la session" aria-label="Nom de la session">
                     <div class="muted" id="session-subtitle">—</div>
+                    <textarea class="session-note" id="session-note" rows="2" maxlength="2000"
+                              placeholder="Note libre : setup, conditions, ressenti… (ex. « nouveau setup, moins d'appui »)"
+                              aria-label="Note de la session"></textarea>
+                    <div class="save-state muted" id="save-state"></div>
                 </div>
                 <div class="actions">
                     <a class="btn" id="export-btn" download>Exporter CSV</a>
@@ -95,6 +107,17 @@
                     </div>
                 </div>
                 <div class="sectors" id="sectors"></div>
+                <div class="analysis-grid">
+                    <div class="map-box">
+                        <div class="tele-title" id="map-title">Carte du circuit</div>
+                        <canvas id="track-map" aria-label="Carte du circuit colorée par le delta"></canvas>
+                        <div class="map-legend muted" id="map-legend"></div>
+                    </div>
+                    <div class="corners-box">
+                        <div class="tele-title">Virage par virage <span class="muted">— clique sur un virage pour zoomer</span></div>
+                        <div class="corners" id="corners"></div>
+                    </div>
+                </div>
                 <div class="hint muted">Glisse sur un graphique pour zoomer, double-clic pour revenir au tour complet.</div>
                 <div id="tele-charts"></div>
                 <div class="empty small" id="tele-empty" hidden></div>
@@ -138,6 +161,10 @@
             <div class="panel-title">Objectifs par circuit <span class="muted">— temps cibles calculés à partir de ta propre référence</span></div>
             <div class="chips" id="track-chips"></div>
             <div class="track-info muted" id="track-info"></div>
+            <div class="record-box" id="record-box" hidden>
+                <div class="tele-title">Historique du record <span class="muted">— plus bas = plus rapide</span></div>
+                <div class="chart" id="record-chart"></div>
+            </div>
             <div id="track-objectives"></div>
             <div class="empty small" id="no-tracks" hidden>Pas encore de circuit roulé avec cette voiture.</div>
         </section>

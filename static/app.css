@@ -226,3 +226,49 @@ table.laps { width: 100%; border-collapse: collapse; }
     .profile-card { grid-template-columns: auto 1fr; }
     .profile-stats { grid-column: 1 / -1; justify-content: flex-start; text-align: left; }
 }
+
+/* --- édition de session --------------------------------------------------------- */
+.session-edit { flex: 1; min-width: 260px; display: flex; flex-direction: column; gap: 4px; }
+.session-name {
+    background: transparent; border: 1px solid transparent; border-radius: 6px; color: var(--text-primary);
+    font: inherit; font-size: 22px; font-weight: 700; padding: 2px 6px; margin-left: -7px; width: 100%;
+}
+.session-name:hover, .session-name:focus { border-color: var(--border); background: var(--surface-1); outline: none; }
+.session-note {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary);
+    font: inherit; padding: .45rem .6rem; resize: vertical; margin-top: .4rem; width: 100%; max-width: 640px;
+}
+.session-note:focus { outline: none; border-color: var(--series-1); }
+.save-state { font-size: 12px; min-height: 16px; }
+.session-item .note-preview { font-size: 12px; color: var(--text-secondary); font-style: italic; margin-top: 2px; overflow-wrap: anywhere; }
+
+/* --- sauvegarde ------------------------------------------------------------------ */
+.backup { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: .5rem; }
+.btn.block { display: block; text-align: center; width: 100%; }
+.small-text { font-size: 12px; }
+.lap-del { font-size: 12px; padding: .2rem .45rem; margin-left: 4px; }
+.lap-del:hover { background: var(--danger); border-color: var(--danger); }
+
+/* --- carte et virages ---------------------------------------------------------- */
+.analysis-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 1rem; margin-top: 1rem; }
+.map-box canvas { width: 100%; aspect-ratio: 4 / 3; display: block; background: var(--bg); border-radius: 6px; }
+.map-legend { font-size: 12px; margin-top: 4px; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
+.swatch { display: inline-block; width: 18px; height: 6px; border-radius: 3px; vertical-align: middle; margin-right: 4px; }
+.corners { display: flex; flex-direction: column; gap: 6px; max-height: 420px; overflow-y: auto; padding-right: 4px; }
+.corner {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: .55rem .7rem;
+    cursor: pointer; text-align: left; color: inherit; font: inherit; width: 100%;
+}
+.corner:hover { border-color: var(--text-muted); }
+.corner.priority { border-left: 3px solid var(--loss); }
+.corner-head { display: flex; justify-content: space-between; gap: .5rem; font-weight: 600; }
+.corner-head .gain { color: var(--gain); }
+.corner-head .loss { color: var(--loss); }
+.corner-stats { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.corner ul { margin: 4px 0 0 1.1rem; font-size: 13px; color: var(--text-secondary); }
+.tag { font-size: 11px; color: var(--loss); margin-left: .4rem; font-weight: 600; }
+
+@media (max-width: 1000px) {
+    .analysis-grid { grid-template-columns: 1fr; }
+}
+.record-box { margin-bottom: 1rem; }
