@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>iRacing Telemetry</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/uPlot.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+<header class="topbar">
+    <div class="brand">🏁 iRacing Telemetry</div>
+    <div class="status-pill" id="status"><span class="dot"></span><span id="status-text">Hors ligne</span></div>
+    <div class="topbar-session" id="live-session">—</div>
+    <div class="live" id="live" hidden>
+        <div class="live-item"><span class="live-label">Rapport</span><span class="live-value" id="live-gear">—</span></div>
+        <div class="live-item"><span class="live-label">Vitesse</span><span class="live-value" id="live-speed">—</span></div>
+        <div class="live-item"><span class="live-label">Tour</span><span class="live-value" id="live-laptime">—</span></div>
+        <div class="live-bars">
+            <div class="bar-row"><span>Gaz</span><div class="bar"><div class="bar-fill throttle" id="live-throttle"></div></div></div>
+            <div class="bar-row"><span>Frein</span><div class="bar"><div class="bar-fill brake" id="live-brake"></div></div></div>
+        </div>
+    </div>
+</header>
+
+<div class="layout">
+    <aside class="sidebar">
+        <div class="sidebar-title">Sessions</div>
+        <ul class="session-list" id="session-list"></ul>
+        <div class="empty small" id="sessions-empty">Aucune session enregistrée.<br>Lance iRacing et monte en piste.</div>
+    </aside>
+
+    <main class="main" id="main">
+        <div class="empty big" id="no-session">
+            Sélectionne une session à gauche, ou lance iRacing :<br>la session en cours s'affichera automatiquement.
+        </div>
+
+        <div id="session-view" hidden>
+            <section class="session-header">
+                <div>
+                    <h1 id="session-title">—</h1>
+                    <div class="muted" id="session-subtitle">—</div>
+                </div>
+                <div class="actions">
+                    <a class="btn" id="export-btn" download>Exporter CSV</a>
+                    <button class="btn danger" id="delete-btn" type="button">Supprimer la session</button>
+                </div>
+            </section>
+
+            <section class="tiles">
+                <div class="tile"><div class="tile-label">Meilleur tour</div><div class="tile-value" id="stat-best">—</div></div>
+                <div class="tile"><div class="tile-label">Moyenne</div><div class="tile-value" id="stat-avg">—</div></div>
+                <div class="tile"><div class="tile-label">Régularité (écart-type)</div><div class="tile-value" id="stat-stdev">—</div></div>
+                <div class="tile"><div class="tile-label">Tour idéal</div><div class="tile-value" id="stat-ideal">—</div><div class="tile-note" id="stat-ideal-note"></div></div>
+                <div class="tile"><div class="tile-label">Tours propres / total</div><div class="tile-value" id="stat-laps">—</div></div>
+                <div class="tile"><div class="tile-label">Conso / tour</div><div class="tile-value" id="stat-fuel">—</div></div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-title">Temps au tour <span class="muted">(tours propres)</span></div>
+                <div class="chart" id="laptime-chart"></div>
+                <div class="empty small" id="laptime-empty">Pas encore de tour propre dans cette session.</div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-title">Tours <span class="muted">— clique sur un tour pour voir sa télémétrie</span></div>
+                <div class="table-wrap">
+                    <table class="laps">
+                        <thead>
+                        <tr>
+                            <th>Tour</th><th>Temps</th><th>Écart</th><th>Carbu</th><th>V max</th>
+                            <th>Gaz moy.</th><th>Frein moy.</th><th>Note</th><th></th>
+                        </tr>
+                        </thead>
+                        <tbody id="laps-body"></tbody>
+                    </table>
+                </div>
+                <div class="empty small" id="laps-empty">En attente d'un tour complet…</div>
+            </section>
+
+            <section class="panel" id="telemetry-panel">
+                <div class="panel-title-row">
+                    <div class="panel-title">Télémétrie</div>
+                    <div class="selectors">
+                        <label>Tour <select id="lap-select"></select></label>
+                        <label>Référence <select id="ref-select"></select></label>
+                    </div>
+                </div>
+                <div class="sectors" id="sectors"></div>
+                <div class="hint muted">Glisse sur un graphique pour zoomer, double-clic pour revenir au tour complet.</div>
+                <div id="tele-charts"></div>
+                <div class="empty small" id="tele-empty" hidden></div>
+            </section>
+        </div>
+    </main>
+</div>
+
+<script src="{{ url_for('static', filename='vendor/uPlot.iife.min.js') }}"></script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
