@@ -195,6 +195,7 @@ function renderDetail({ session, laps, stats, record }) {
         state.refId = defaultReference(laps, stats);
     }
 
+    loadDebrief(session.id);
     renderLapTimeChart(laps, stats);
     renderLapTable(laps, stats);
     renderSelectors(laps);
@@ -708,3 +709,27 @@ $('corners').addEventListener('click', e => {
 });
 
 new ResizeObserver(() => { if (state.compare) renderMap(state.compare); }).observe($('track-map'));
+
+// --- débrief de la session ----------------------------------------------------------------
+
+async function loadDebrief(sessionId) {
+    let data;
+    try {
+        data = await api(`/api/sessions/${sessionId}/debrief`);
+    } catch (err) {
+        return;
+    }
+    if (sessionId !== state.sessionId) return;
+    const item = r => `<li><div class="r-title">${escapeHtml(r.title)}</div>${r.detail ? `<div class="r-detail">${escapeHtml(r.detail)}</div>` : ''}</li>`;
+    $('debrief-grid').hidden = !data.ready;
+    $('debrief-empty').hidden = data.ready;
+    $('debrief-empty').textContent = data.message || '';
+    $('debrief-priority').hidden = !data.priority;
+    if (data.priority) {
+        $('debrief-priority').innerHTML = `<div class="p-label">🎯 Priorité pour la prochaine session</div>
+            <div class="r-title">${escapeHtml(data.priority.title)}</div>
+            <div class="r-detail">${escapeHtml(data.priority.detail)}</div>`;
+    }
+    $('debrief-good').innerHTML = data.good.map(item).join('') || '<li class="none">Rien de marquant pour l\'instant.</li>';
+    $('debrief-bad').innerHTML = data.bad.map(item).join('') || '<li class="none">Rien à signaler, beau travail.</li>';
+}

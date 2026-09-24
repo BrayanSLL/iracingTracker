@@ -23,6 +23,21 @@ par session, et tu supprimes ce que tu veux depuis l'interface. 🏁
 - Tours marqués automatiquement : `stand` (passage par la pitlane) et `partiel` (enregistrement commencé
   en plein tour). Ils sont exclus du meilleur tour, de la moyenne et de la régularité.
 
+**Débrief de session** : à chaque tour terminé, l'application écrit un débrief de la session avec des
+**points forts**, des **points à améliorer** et **une priorité pour la prochaine session** (le point qui
+fait perdre le plus de temps). Il porte sur :
+- le record (nouveau record, ou écart avec ton record)
+- la régularité, le tour idéal et le potentiel non exploité
+- les secteurs les plus et les moins réguliers
+- la progression pendant la session, les tours invalidés et les séries de tours propres
+- la télémétrie : virages où tu perds le plus de temps en moyenne (avec la raison la plus fréquente :
+  freinage trop tôt, vitesse mini trop basse, gaz trop tard…), régularité des points de freinage, roue libre
+
+Le débrief apparaît à partir de 3 tours propres. L'analyse des virages compare tes 15 derniers tours propres
+à ton meilleur tour de la session.
+
+![Débrief de session](docs/debrief.png)
+
 **Télémétrie**
 - Enregistrement de **chaque tour à 60 Hz** : vitesse, **accélérateur**, **frein**, rapport engagé, angle du volant
   (≈ un point tous les 80 cm à 180 km/h)
@@ -126,6 +141,7 @@ Windows, mise à jour 60 fois par seconde, et signale chaque mise à jour par un
 | `telemetry.py` | Lecture d'iRacing (via [`pyirsdk`](https://github.com/kutu/pyirsdk)), détection des tours, enregistrement des traces |
 | `analysis.py` | Nettoyage des traces, secteurs, alignement de deux tours, delta, statistiques, virages, carte |
 | `db.py` | Base SQLite (sessions, tours, traces) |
+| `debrief.py` | Débrief automatique d'une session (points forts, à améliorer, priorité) |
 | `objectives.py` | Objectifs (modèles, réplication par voiture et circuit, évaluation), XP et niveaux |
 | `demo.py` | Faux iRacing pour la démo et les tests |
 | `templates/`, `static/` | Interface (graphiques avec [uPlot](https://github.com/leeoniya/uPlot), inclus dans le repo : aucun accès internet nécessaire) |

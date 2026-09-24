@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import analysis  # noqa: E402
 import db  # noqa: E402
+import debrief  # noqa: E402
 import main  # noqa: E402
 import objectives  # noqa: E402
 import telemetry  # noqa: E402
@@ -120,6 +121,14 @@ class AnalysisFeaturesTest(RecorderTest):
         self.assertIsNotNone(status["delta"])
         self.assertLess(abs(status["delta"]), 5)
 
+    def test_debrief_uses_corner_telemetry(self):
+        import time
+        start = time.perf_counter()
+        result = self.client.get(f"/api/sessions/{self.recorder.session_id}/debrief").get_json()
+        self.assertTrue(result["ready"])
+        self.assertLess(time.perf_counter() - start, 10)
+        self.assertTrue(result["good"] or result["bad"])
+
     def test_rename_and_record_history(self):
         sid = self.recorder.session_id
         self.assertEqual(self.client.patch(f"/api/sessions/{sid}", json={"name": "Test setup", "note": "moins d'appui"}).status_code, 204)
@@ -128,6 +137,47 @@ class AnalysisFeaturesTest(RecorderTest):
         history = self.client.get("/api/records?car=Voiture de démo&track=Circuit de démo").get_json()
         self.assertEqual(len(history), 1)
         self.assertEqual(history[0]["record"], history[0]["session_best"])
+
+
+class DebriefTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        db.DB_PATH = Path(self.tmp.name) / "sessions.db"
+        db.init_db()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def add_session(self, times, flags=None):
+        sid = db.create_session("Spa", 7000.0, "MX-5", "Practice")
+        for i, t in enumerate(times, start=1):
+            db.insert_lap(sid, {"lap_number": i, "lap_time": t, "sectors": None, "fuel_used": 2.0,
+                                "fuel_left": 20.0, "max_speed_kmh": 200.0, "throttle_avg": 0.6,
+                                "brake_avg": 0.1, "flag": (flags or {}).get(i)}, None)
+        return sid
+
+    def titles(self, items):
+        return " | ".join(r["title"] for r in items)
+
+    def test_not_enough_laps(self):
+        sid = self.add_session([150.0, 151.0])
+        self.assertFalse(debrief.session_debrief(sid)["ready"])
+
+    def test_good_and_bad_points(self):
+        self.add_session([150.0, 149.5, 149.8, 150.1, 149.9])  # session précédente : record 149.5
+        steady = self.add_session([149.2, 149.3, 149.25, 149.3, 149.2, 149.28, 149.3, 149.22, 149.25, 149.3])
+        result = debrief.session_debrief(steady)
+        self.assertIn("Nouveau record", self.titles(result["good"]))
+        self.assertIn("Très régulier", self.titles(result["good"]))
+
+        messy = self.add_session([151.0, 153.5, 150.9, None, 152.8, 151.2, 154.0, 151.5, 152.9, 153.6])
+        result = debrief.session_debrief(messy)
+        bad = self.titles(result["bad"])
+        self.assertIn("Rythme irrégulier", bad)
+        self.assertIn("sans temps valide", bad)
+        self.assertIn("de ton record", bad)
+        self.assertIsNotNone(result["priority"])
+        self.assertIn("Rythme irrégulier", result["priority"]["title"])
 
 
 class LapDeleteAndBackupTest(unittest.TestCase):

@@ -272,3 +272,22 @@ table.laps { width: 100%; border-collapse: collapse; }
     .analysis-grid { grid-template-columns: 1fr; }
 }
 .record-box { margin-bottom: 1rem; }
+
+/* --- débrief --------------------------------------------------------------------- */
+.debrief-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.debrief-head { font-weight: 700; margin-bottom: .5rem; }
+.debrief-head.good { color: var(--good); }
+.debrief-head.bad { color: var(--gold); }
+.debrief-list { list-style: none; display: flex; flex-direction: column; gap: .5rem; }
+.debrief-list li { background: var(--surface-2); border-radius: 6px; padding: .55rem .75rem; border-left: 3px solid var(--border); }
+#debrief-good li { border-left-color: var(--good); }
+#debrief-bad li { border-left-color: var(--gold); }
+.debrief-list .r-title { font-weight: 600; }
+.debrief-list .r-detail { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+.debrief-list .none { color: var(--text-muted); font-size: 13px; border-left-color: var(--border) !important; }
+.debrief-priority {
+    background: color-mix(in srgb, var(--series-1) 14%, var(--surface-2)); border: 1px solid var(--series-1);
+    border-radius: 6px; padding: .65rem .85rem; margin-bottom: .9rem;
+}
+.debrief-priority .p-label { font-size: 12px; text-transform: uppercase; color: var(--series-1); font-weight: 700; }
+@media (max-width: 800px) { .debrief-grid { grid-template-columns: 1fr; } }

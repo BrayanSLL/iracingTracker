@@ -76,6 +76,22 @@
                 <div class="tile"><div class="tile-label">Conso / tour</div><div class="tile-value" id="stat-fuel">—</div></div>
             </section>
 
+            <section class="panel debrief" id="debrief-panel">
+                <div class="panel-title">Débrief de la session</div>
+                <div class="debrief-priority" id="debrief-priority" hidden></div>
+                <div class="debrief-grid" id="debrief-grid">
+                    <div>
+                        <div class="debrief-head good">✓ Points forts</div>
+                        <ul class="debrief-list" id="debrief-good"></ul>
+                    </div>
+                    <div>
+                        <div class="debrief-head bad">⚠ À améliorer</div>
+                        <ul class="debrief-list" id="debrief-bad"></ul>
+                    </div>
+                </div>
+                <div class="empty small" id="debrief-empty" hidden></div>
+            </section>
+
             <section class="panel">
                 <div class="panel-title">Temps au tour <span class="muted">(tours propres)</span></div>
                 <div class="chart" id="laptime-chart"></div>

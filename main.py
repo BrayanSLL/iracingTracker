@@ -19,6 +19,7 @@ from werkzeug.serving import make_server
 
 import analysis
 import db
+import debrief
 import objectives
 from telemetry import TelemetryRecorder
 
@@ -53,6 +54,13 @@ def session_detail(session_id):
     record = db.record_lap(session["car"], session["track"])
     return jsonify({"session": session, "laps": laps, "stats": analysis.session_stats(laps),
                     "record": record, "is_race": db.is_race(session)})
+
+
+@app.get("/api/sessions/<int:session_id>/debrief")
+def session_debrief(session_id):
+    if not db.query_one("SELECT id FROM sessions WHERE id = ?", (session_id,)):
+        abort(404)
+    return jsonify(debrief.session_debrief(session_id))
 
 
 @app.delete("/api/sessions/<int:session_id>")

@@ -70,9 +70,9 @@ def resample(trace, grid):
     return out
 
 
-def compare(lap_trace, ref_trace=None):
+def compare(lap_trace, ref_trace=None, points=None):
     """Aligne un tour (et éventuellement une référence) sur la distance, et calcule le delta."""
-    points = min(MAX_POINTS, max(len(lap_trace["d"]), len(ref_trace["d"]) if ref_trace else 0))
+    points = points or min(MAX_POINTS, max(len(lap_trace["d"]), len(ref_trace["d"]) if ref_trace else 0))
     grid = [i / (points - 1) for i in range(points)]
     result = {"d": grid, "lap": resample(lap_trace, grid)}
     if ref_trace:
