@@ -35,6 +35,35 @@ CREATE TABLE IF NOT EXISTS traces (
     data BLOB NOT NULL      -- JSON compressé (zlib) : une liste par canal
 );
 CREATE INDEX IF NOT EXISTS laps_session ON laps(session_id);
+
+-- Gamification : une entrée par voiture (et voiture × circuit), objectifs répliqués depuis objectives.py
+CREATE TABLE IF NOT EXISTS cars (
+    name TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS car_tracks (
+    car TEXT NOT NULL REFERENCES cars(name),
+    track TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (car, track)
+);
+CREATE TABLE IF NOT EXISTS objectives (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    car TEXT NOT NULL REFERENCES cars(name),
+    track TEXT NOT NULL DEFAULT '',   -- '' = objectif de la voiture, sinon objectif de circuit
+    code TEXT NOT NULL,               -- identifiant du modèle dans objectives.py
+    scope TEXT NOT NULL,              -- 'car' ou 'track'
+    xp INTEGER NOT NULL,
+    value REAL,                       -- dernière valeur mesurée
+    completed_at TEXT,                -- NULL tant que l'objectif n'est pas réussi
+    UNIQUE (car, track, code)
+);
+CREATE TABLE IF NOT EXISTS xp_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    objective_id INTEGER NOT NULL REFERENCES objectives(id),
+    xp INTEGER NOT NULL,
+    at TEXT NOT NULL
+);
 """
 
 

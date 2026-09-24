@@ -10,6 +10,14 @@
 <body>
 <header class="topbar">
     <div class="brand">🏁 iRacing Telemetry</div>
+    <nav class="tabs" role="tablist">
+        <button class="tab active" type="button" data-view="sessions">Sessions</button>
+        <button class="tab" type="button" data-view="progress">Progression</button>
+    </nav>
+    <button class="level-chip" type="button" data-view="progress" title="Voir ta progression">
+        <span class="level-num" id="level-num">Niv. 1</span>
+        <span class="level-bar"><span class="level-fill" id="level-fill"></span></span>
+    </button>
     <div class="status-pill" id="status"><span class="dot"></span><span id="status-text">Hors ligne</span></div>
     <div class="topbar-session" id="live-session">—</div>
     <div class="live" id="live" hidden>
@@ -23,7 +31,7 @@
     </div>
 </header>
 
-<div class="layout">
+<div class="layout" id="view-sessions">
     <aside class="sidebar">
         <div class="sidebar-title">Sessions</div>
         <ul class="session-list" id="session-list"></ul>
@@ -95,7 +103,51 @@
     </main>
 </div>
 
+<main class="progress-view" id="view-progress" hidden>
+    <section class="profile-card">
+        <div class="profile-level">
+            <div class="profile-level-num" id="profile-level">1</div>
+            <div class="profile-level-label">niveau</div>
+        </div>
+        <div class="profile-body">
+            <div class="profile-title" id="profile-title">Rookie</div>
+            <div class="xp-bar"><div class="xp-fill" id="profile-xp-fill"></div></div>
+            <div class="muted" id="profile-xp-text">0 / 100 XP</div>
+        </div>
+        <div class="profile-stats">
+            <div><span class="tile-value" id="profile-xp-total">0</span><div class="tile-label">XP au total</div></div>
+            <div><span class="tile-value" id="profile-completed">0</span><div class="tile-label">objectifs réussis</div></div>
+        </div>
+    </section>
+
+    <div class="empty big" id="no-cars">Aucune voiture pour l'instant.<br>Roule une session : ta voiture et ses objectifs apparaîtront automatiquement.</div>
+
+    <div id="progress-content" hidden>
+        <div class="panel-title">Voitures</div>
+        <div class="chips" id="car-chips"></div>
+
+        <section class="panel">
+            <div class="panel-title-row">
+                <div class="panel-title" id="car-objectives-title">Objectifs de la voiture</div>
+                <label class="toggle muted"><input type="checkbox" id="hide-done"> Masquer les objectifs réussis</label>
+            </div>
+            <div id="car-objectives"></div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-title">Objectifs par circuit <span class="muted">— temps cibles calculés à partir de ta propre référence</span></div>
+            <div class="chips" id="track-chips"></div>
+            <div class="track-info muted" id="track-info"></div>
+            <div id="track-objectives"></div>
+            <div class="empty small" id="no-tracks" hidden>Pas encore de circuit roulé avec cette voiture.</div>
+        </section>
+    </div>
+</main>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
 <script src="{{ url_for('static', filename='vendor/uPlot.iife.min.js') }}"></script>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='progress.js') }}"></script>
 </body>
 </html>

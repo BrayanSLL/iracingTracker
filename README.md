@@ -7,6 +7,8 @@ par session, et tu supprimes ce que tu veux depuis l'interface. 🏁
 
 ![Aperçu de l'application](docs/screenshot.png)
 
+![Progression](docs/progression.png)
+
 > **Windows uniquement pour la capture** : iRacing ne tourne que sous Windows, et ses données ne sont
 > lisibles que depuis la même machine. Le mode démo, lui, fonctionne partout.
 
@@ -28,6 +30,8 @@ par session, et tu supprimes ce que tu veux depuis l'interface. 🏁
 - Courbe de **delta** : où tu perds et où tu gagnes du temps, mètre par mètre
 - Temps perdu ou gagné sur **10 secteurs**
 - Curseur et zoom synchronisés sur tous les graphiques (glisser pour zoomer, double-clic pour revenir)
+
+**Progression** : 115 objectifs par voiture et par circuit, XP et niveaux (voir plus bas).
 
 **En direct** : statut de connexion, rapport, vitesse, chrono du tour, barres gaz et frein.
 
@@ -98,6 +102,7 @@ Windows, mise à jour 60 fois par seconde, et signale chaque mise à jour par un
 | `telemetry.py` | Lecture d'iRacing (via [`pyirsdk`](https://github.com/kutu/pyirsdk)), détection des tours, enregistrement des traces |
 | `analysis.py` | Nettoyage des traces, secteurs, alignement de deux tours, delta, statistiques |
 | `db.py` | Base SQLite (sessions, tours, traces) |
+| `objectives.py` | Objectifs (modèles, réplication par voiture et circuit, évaluation), XP et niveaux |
 | `demo.py` | Faux iRacing pour la démo et les tests |
 | `templates/`, `static/` | Interface (graphiques avec [uPlot](https://github.com/leeoniya/uPlot), inclus dans le repo : aucun accès internet nécessaire) |
 | `tests/` | Tests automatiques : `python -m unittest discover tests` |
@@ -124,10 +129,36 @@ Windows, mise à jour 60 fois par seconde, et signale chaque mise à jour par un
 | `sessions` | date, circuit, longueur du circuit, voiture, type de session |
 | `laps` | numéro, temps, secteurs, carburant consommé et restant, vitesse max, gaz et frein moyens, marquage |
 | `traces` | télémétrie 60 Hz du tour (JSON compressé) |
+| `cars`, `car_tracks` | voitures et couples voiture × circuit connus |
+| `objectives` | objectifs répliqués pour chaque voiture et circuit : valeur actuelle, date de réussite, XP |
+| `xp_events` | historique de l'XP gagnée |
 
 Le dossier `data/` est ignoré par git : tes sessions restent sur ta machine.
 
 ---
+
+## Progression : objectifs, XP et niveaux 🏆
+
+L'onglet **Progression** transforme tes sessions en jeu.
+
+- **115 modèles d'objectifs** : 71 par voiture (volume, distance, assiduité, découverte de circuits,
+  courses, séries de tours propres, régularité, endurance, carburant) et 44 par couple voiture × circuit
+  (volume, chrono, régularité, tour idéal).
+- **Réplication automatique** : la première fois que tu roules avec une voiture inconnue, elle est ajoutée
+  à la base avec tous ses objectifs. Même chose pour chaque nouveau circuit avec cette voiture. La MX-5 et
+  la GR86 ont donc chacune leur propre progression, et chaque circuit a la sienne.
+- **Des objectifs de chrono toujours réalisables** : ils ne sont jamais en temps absolu. Ta **référence** est
+  le meilleur de tes 3 premiers tours propres sur ce couple voiture × circuit. Les objectifs demandent de la
+  battre de 0,5 % à 6 %, et l'interface affiche le vrai temps cible (par exemple « Temps cible 1:32.450 »).
+  Un circuit de 5 km ne te demandera donc jamais un tour en 1:00.
+- **Paliers et XP** : Bronze 50 XP, Argent 100 XP, Or 200 XP, Platine 400 XP.
+- **Niveaux** : il faut 200 XP pour le niveau 2, puis 100 XP de plus à chaque niveau. Titres : Rookie →
+  Licence D → C → B → A → Pro → Pro/WC → Légende.
+- **Notifications** à chaque objectif débloqué et à chaque passage de niveau, pendant que tu roules.
+- Au démarrage, les objectifs sont recalculés sur les sessions déjà enregistrées.
+- Supprimer une session ne retire pas les objectifs déjà réussis ni leur XP.
+- Pour ajouter des objectifs, modifie `CAR_TEMPLATES` ou `TRACK_TEMPLATES` dans `objectives.py`. Ils sont
+  ajoutés automatiquement à toutes les voitures au prochain tour.
 
 ## Ce que les données permettent de conclure
 

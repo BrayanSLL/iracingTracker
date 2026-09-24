@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import analysis  # noqa: E402
 import db  # noqa: E402
 import main  # noqa: E402
+import objectives  # noqa: E402
 import telemetry  # noqa: E402
 from demo import DemoWaiter, FakeIRSDK  # noqa: E402
 
@@ -89,3 +90,50 @@ class RecorderTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ObjectivesTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        db.DB_PATH = Path(self.tmp.name) / "sessions.db"
+        db.init_db()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def add_session(self, car, track, times):
+        sid = db.create_session(track, 5000.0, car, "Practice")
+        for i, t in enumerate(times, start=1):
+            db.insert_lap(sid, {"lap_number": i, "lap_time": t, "sectors": None, "fuel_used": 2.0,
+                                "fuel_left": 20.0, "max_speed_kmh": 200.0, "throttle_avg": 0.6,
+                                "brake_avg": 0.1, "flag": None}, None)
+        return sid
+
+    def test_new_car_and_track_get_replicated_objectives(self):
+        objectives.ensure_car("MX-5", "Spa")
+        objectives.ensure_car("GR86", "Spa")
+        for car in ("MX-5", "GR86"):
+            self.assertEqual(len(objectives.list_objectives(car)["objectives"]), len(objectives.CAR_TEMPLATES))
+            self.assertEqual(len(objectives.list_objectives(car, "Spa")["objectives"]), len(objectives.TRACK_TEMPLATES))
+        self.assertGreaterEqual(len(objectives.CAR_TEMPLATES) + len(objectives.TRACK_TEMPLATES), 100)
+
+    def test_lap_targets_are_relative_to_own_reference(self):
+        self.add_session("MX-5", "Spa", [150.0, 149.0, 148.0, 146.0, 145.5])
+        objectives.evaluate("MX-5", "Spa")
+        data = objectives.list_objectives("MX-5", "Spa")
+        self.assertEqual(data["baseline"], 148.0)
+        pb = {o["code"]: o for o in data["objectives"]}
+        self.assertIsNotNone(pb["t_pb_1"]["completed_at"])       # 145.5 < 148 × 0,99
+        self.assertIsNone(pb["t_pb_2"]["completed_at"])          # 145.5 > 148 × 0,98
+        self.assertAlmostEqual(pb["t_pb_2"]["target_time"], 145.04, places=2)
+
+    def test_xp_and_levels(self):
+        self.add_session("MX-5", "Spa", [100.0] * 12)
+        unlocked = objectives.evaluate("MX-5", "Spa")
+        self.assertIn("Boucler 1 tour", unlocked)
+        profile = objectives.profile()
+        self.assertGreater(profile["xp"], 0)
+        self.assertGreater(profile["level"], 1)
+        # une seconde évaluation ne redonne pas d'XP
+        self.assertEqual(objectives.evaluate("MX-5", "Spa"), [])
+        self.assertEqual(objectives.profile()["xp"], profile["xp"])

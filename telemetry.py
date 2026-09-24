@@ -5,6 +5,7 @@ import time
 
 import analysis
 import db
+import objectives
 
 MS_TO_KMH = 3.6
 RAD_TO_DEG = 57.29578
@@ -123,6 +124,7 @@ class TelemetryRecorder:
         track_length = parse_track_length(weekend.get("TrackLength"))
 
         session_id = db.create_session(track, track_length, car, session_type)
+        objectives.ensure_car(car, track)  # voiture / circuit inconnus : on réplique les objectifs
         with self.lock:
             self.session_id, self.track, self.car = session_id, track, car
         print(f"[telemetry] nouvelle session #{session_id} : {track} / {car} ({session_type})")
@@ -240,6 +242,11 @@ class TelemetryRecorder:
             db.insert_lap(lap["session_id"], record, trace)
         except Exception as exc:  # session supprimée entre-temps, disque plein…
             print(f"[telemetry] tour {lap['lap_number']} non enregistré : {exc!r}")
+            return
+        try:
+            objectives.evaluate(self.car, self.track)
+        except Exception as exc:
+            print(f"[objectifs] erreur : {exc!r}")
 
     def run(self):
         while True:

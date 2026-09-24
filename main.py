@@ -15,6 +15,7 @@ from werkzeug.serving import make_server
 
 import analysis
 import db
+import objectives
 from telemetry import TelemetryRecorder
 
 app = Flask(__name__)
@@ -84,6 +85,45 @@ def compare():
     return jsonify(analysis.compare(lap_trace, ref_trace))
 
 
+@app.get("/api/profile")
+def profile():
+    return jsonify(objectives.profile())
+
+
+@app.get("/api/cars")
+def cars():
+    return jsonify(db.query("""
+        SELECT c.name,
+               (SELECT COUNT(*) FROM objectives o WHERE o.car = c.name) AS total,
+               (SELECT COUNT(completed_at) FROM objectives o WHERE o.car = c.name) AS completed,
+               (SELECT COALESCE(SUM(xp), 0) FROM objectives o WHERE o.car = c.name AND completed_at IS NOT NULL) AS xp
+        FROM cars c ORDER BY c.created_at DESC
+    """))
+
+
+@app.get("/api/cars/<path:car>/tracks")
+def car_tracks(car):
+    return jsonify(db.query("""
+        SELECT t.track,
+               (SELECT COUNT(*) FROM objectives o WHERE o.car = t.car AND o.track = t.track) AS total,
+               (SELECT COUNT(completed_at) FROM objectives o WHERE o.car = t.car AND o.track = t.track) AS completed
+        FROM car_tracks t WHERE t.car = ? ORDER BY t.created_at DESC
+    """, (car,)))
+
+
+@app.get("/api/objectives")
+def list_objectives():
+    car = request.args.get("car")
+    if not car:
+        abort(400)
+    return jsonify(objectives.list_objectives(car, request.args.get("track") or None))
+
+
+@app.get("/api/unlocks")
+def unlocks():
+    return jsonify(objectives.recent_unlocks(request.args.get("after", 0, type=int)))
+
+
 def open_window(url):
     """Ouvre une vraie fenêtre (pywebview) ; se rabat sur le navigateur si ce n'est pas possible."""
     try:
@@ -108,6 +148,7 @@ def main():
     args = parser.parse_args()
 
     db.init_db()
+    objectives.evaluate_all()  # rattrape les objectifs des sessions déjà enregistrées
     if args.demo:
         from demo import DemoWaiter, FakeIRSDK
         fake = FakeIRSDK()
