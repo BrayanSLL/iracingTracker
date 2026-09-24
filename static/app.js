@@ -692,15 +692,33 @@ function renderCorners(data) {
         const lostHtml = lost == null ? '' : `<span class="${lost > 0 ? 'loss' : 'gain'}">${fmtDelta(lost)} s</span>`;
         const stats = `Freinage ${fmtDistance(c.lap.brake_point)} · mini ${Math.round(c.lap.min_speed)} km/h · gaz ${fmtDistance(c.lap.throttle_point)}`;
         const tips = c.advice.length ? `<ul>${c.advice.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` : '';
-        return `<button type="button" class="corner${worst.includes(c.number) ? ' priority' : ''}" data-start="${c.start}" data-end="${c.end}">
+        const training = state.status && state.status.training;
+        const isTraining = training && training.number === c.number && state.detail
+            && training.car === state.detail.session.car && training.track === state.detail.session.track;
+        return `<div role="button" tabindex="0" class="corner${worst.includes(c.number) ? ' priority' : ''}${isTraining ? ' training' : ''}"
+                     data-number="${c.number}" data-start="${c.start}" data-end="${c.end}">
             <div class="corner-head"><span>Virage ${c.number}${worst.includes(c.number) ? '<span class="tag">à travailler</span>' : ''}</span>${lostHtml}</div>
             <div class="corner-stats">${stats}</div>
             ${tips}
-        </button>`;
+            <div class="corner-actions">
+                <button class="btn train-btn" type="button" data-train="${c.number}">${isTraining ? '🎯 En entraînement' : '🎯 S\'entraîner sur ce virage'}</button>
+            </div>
+        </div>`;
     }).join('');
 }
 
+$('corners').addEventListener('keydown', e => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('corner')) {
+        e.preventDefault();
+        e.target.click();
+    }
+});
 $('corners').addEventListener('click', e => {
+    const train = e.target.closest('[data-train]');
+    if (train) {
+        startTraining(train.closest('.corner'));  // défini dans coaching.js
+        return;
+    }
     const el = e.target.closest('.corner');
     if (!el || !teleCharts.length) return;
     const margin = trackLength() ? 60 : 1.5;

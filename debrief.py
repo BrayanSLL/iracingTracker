@@ -235,3 +235,218 @@ def _average_values(items):
         values = [c["lap"][key] for c in items if c["lap"][key] is not None]
         avg[key] = statistics.mean(values) if values else None
     return avg
+
+
+# --- comparaison de deux sessions --------------------------------------------------------------
+
+def _date(iso):
+    return f"{iso[8:10]}/{iso[5:7]}"
+
+
+def compare_sessions(a_id, b_id):
+    """Compare la session A (avant) et la session B (après) : temps, régularité, secteurs, virages."""
+    sessions = {s["id"]: s for s in db.query("SELECT * FROM sessions WHERE id IN (?, ?)", (a_id, b_id))}
+    if a_id not in sessions or b_id not in sessions:
+        return None
+    a, b = sessions[a_id], sessions[b_id]
+    laps_a, laps_b = db.list_laps(a_id), db.list_laps(b_id)
+    stats_a, stats_b = analysis.session_stats(laps_a), analysis.session_stats(laps_b)
+    same_track = (a["car"], a["track"]) == (b["car"], b["track"])
+
+    metrics = []
+    for key, label, lower_is_better in (
+        ("best_lap", "Meilleur tour", True), ("avg_lap", "Moyenne", True), ("stdev", "Régularité (écart-type)", True),
+        ("ideal_lap", "Tour idéal", True), ("clean_laps", "Tours propres", False), ("avg_fuel", "Conso / tour", None),
+    ):
+        va, vb = stats_a[key], stats_b[key]
+        diff = vb - va if va is not None and vb is not None else None
+        better = None if diff is None or lower_is_better is None or abs(diff) < 1e-9 else (diff < 0) == lower_is_better
+        metrics.append({"key": key, "label": label, "a": va, "b": vb, "diff": diff, "better": better})
+
+    sectors = None
+    if stats_a["best_sectors"] and stats_b["best_sectors"]:
+        sectors = [sb - sa for sa, sb in zip(stats_a["best_sectors"], stats_b["best_sectors"])]
+
+    corners = []
+    trace_a = db.get_trace(stats_a["best_lap_id"]) if stats_a["best_lap_id"] else None
+    trace_b = db.get_trace(stats_b["best_lap_id"]) if stats_b["best_lap_id"] else None
+    if same_track and trace_a and trace_b:
+        result = analysis.compare(trace_b, trace_a, points=3000)
+        corners = [{"number": c["number"], "time_lost": c["time_lost"], "advice": c["advice"],
+                    "a": c["ref"], "b": c["lap"]} for c in analysis.corner_analysis(result, a["track_length_m"])]
+
+    return {"a": a, "b": b, "same_track": same_track, "metrics": metrics, "sectors": sectors,
+            "corners": corners, "verdict": _verdict(a, b, metrics, corners, same_track)}
+
+
+def _verdict(a, b, metrics, corners, same_track):
+    lines = []
+    if not same_track:
+        lines.append({"tone": "neutral", "text": "Attention : les deux sessions n'ont pas la même voiture ou le même circuit, "
+                                                  "la comparaison n'a pas vraiment de sens."})
+    m = {x["key"]: x for x in metrics}
+    best = m["best_lap"]
+    if best["diff"] is not None:
+        faster = best["diff"] < 0
+        lines.append({"tone": "good" if faster else "bad",
+                      "text": f"Meilleur tour {'plus rapide' if faster else 'plus lent'} de {_s(abs(best['diff']), 3)} s "
+                              f"({_fmt_time(best['a'])} → {_fmt_time(best['b'])})."})
+    avg = m["avg_lap"]
+    if avg["diff"] is not None and abs(avg["diff"]) >= 0.05:
+        lines.append({"tone": "good" if avg["diff"] < 0 else "bad",
+                      "text": f"Rythme moyen {'meilleur' if avg['diff'] < 0 else 'moins bon'} de {_s(abs(avg['diff']))} s par tour."})
+    stdev = m["stdev"]
+    if stdev["diff"] is not None and abs(stdev["diff"]) >= 0.05:
+        lines.append({"tone": "good" if stdev["diff"] < 0 else "bad",
+                      "text": f"{'Plus' if stdev['diff'] < 0 else 'Moins'} régulier : ± {_s(stdev['a'], 3)} s → ± {_s(stdev['b'], 3)} s."})
+    gains = sorted((c for c in corners if c["time_lost"] <= -0.05), key=lambda c: c["time_lost"])[:2]
+    losses = sorted((c for c in corners if c["time_lost"] >= 0.05), key=lambda c: -c["time_lost"])[:2]
+    if gains:
+        lines.append({"tone": "good", "text": "Gains surtout au " + " et au ".join(
+            f"virage {c['number']} (−{_s(-c['time_lost'])} s)" for c in gains) + "."})
+    if losses:
+        lines.append({"tone": "bad", "text": "Pertes surtout au " + " et au ".join(
+            f"virage {c['number']} (+{_s(c['time_lost'])} s)" for c in losses) + "."})
+    if b.get("note"):
+        lines.append({"tone": "neutral", "text": f"Ta note sur la session B : « {b['note']} »."})
+    return lines
+
+
+# --- débrief de progression sur plusieurs sessions ---------------------------------------------
+
+_progress_cache = {}
+
+
+def progress_debrief(car, track):
+    """Évolution sur toutes les sessions d'un couple voiture × circuit : ce qui progresse, ce qui stagne."""
+    signature = db.query_one("""SELECT COUNT(l.id) AS n, MAX(l.id) AS last FROM laps l
+                                JOIN sessions s ON s.id = l.session_id WHERE s.car IS ? AND s.track IS ?""",
+                             (car, track))
+    key = (car, track, signature["n"], signature["last"])
+    if key not in _progress_cache:
+        if len(_progress_cache) > 50:
+            _progress_cache.clear()
+        _progress_cache[key] = _build_progress(car, track)
+    return _progress_cache[key]
+
+
+def _build_progress(car, track):
+    sessions = []
+    for row in db.query("SELECT * FROM sessions WHERE car IS ? AND track IS ? ORDER BY started_at, id", (car, track)):
+        laps = db.list_laps(row["id"])
+        stats = analysis.session_stats(laps)
+        if stats["clean_laps"] >= 3:
+            sessions.append({"session": row, "laps": laps, "stats": stats})
+    if len(sessions) < 2:
+        return {"ready": False, "good": [], "bad": [], "priority": None,
+                "message": f"Il faut au moins 2 sessions avec 3 tours propres sur ce circuit ({len(sessions)} pour l'instant)."}
+
+    half = len(sessions) // 2
+    early, recent = sessions[:half], sessions[half:]
+    since = _date(sessions[0]["session"]["started_at"])
+    good, bad = [], []
+    mean = statistics.mean
+
+    first_best = sessions[0]["stats"]["best_lap"]
+    record = min(s["stats"]["best_lap"] for s in sessions)
+    if first_best - record >= 0.05:
+        good.append(_remark(f"Record amélioré de {_s(first_best - record)} s depuis le {since}",
+                            f"{_fmt_time(first_best)} → {_fmt_time(record)} en {len(sessions)} sessions."))
+
+    early_avg = [s["stats"]["avg_lap"] for s in early]
+    recent_avg = [s["stats"]["avg_lap"] for s in recent]
+    pace_gain = mean(early_avg) - mean(recent_avg)
+    if pace_gain >= 0.2:
+        good.append(_remark(f"Rythme moyen en progrès : −{_s(pace_gain)} s par tour",
+                            "Entre tes premières et tes dernières sessions sur ce circuit."))
+    elif pace_gain <= -0.2:
+        bad.append(_remark(f"Rythme moyen en baisse : +{_s(-pace_gain)} s par tour",
+                           "Tes dernières sessions sont plus lentes en moyenne que les premières.", weight=0.2))
+
+    stdev_e = [s["stats"]["stdev"] for s in early if s["stats"]["stdev"] is not None and s["stats"]["clean_laps"] >= 5]
+    stdev_r = [s["stats"]["stdev"] for s in recent if s["stats"]["stdev"] is not None and s["stats"]["clean_laps"] >= 5]
+    if stdev_e and stdev_r:
+        before, after = mean(stdev_e), mean(stdev_r)
+        if before - after >= 0.1:
+            good.append(_remark(f"Plus régulier qu'avant : ± {_s(before, 3)} s → ± {_s(after, 3)} s", ""))
+        elif after >= 0.4 and before - after < 0.05:
+            bad.append(_remark(f"Ta régularité stagne (± {_s(after, 3)} s)",
+                               "Elle ne s'améliore pas d'une session à l'autre. Fais des relais de 10 tours "
+                               "en visant le même temps à chaque tour.", weight=after * 0.4))
+
+    _progress_sectors(early, recent, since, good, bad)
+    _progress_corners(car, track, sessions, early, recent, since, good, bad)
+
+    priority = max(bad, key=lambda r: r["weight"]) if bad else None
+    return {"ready": True, "good": good, "bad": sorted(bad, key=lambda r: -r["weight"]),
+            "priority": priority if priority and priority["weight"] > 0 else None, "message": None,
+            "period": {"since": sessions[0]["session"]["started_at"], "until": sessions[-1]["session"]["started_at"],
+                       "sessions": len(sessions)}}
+
+
+def _sector_spreads(group):
+    """Écart-type moyen de chaque secteur sur un groupe de sessions."""
+    per_session = []
+    for s in group:
+        rows = [l["sectors"] for l in s["laps"]
+                if l["flag"] is None and l["lap_time"] is not None and l["sectors"]
+                and len(l["sectors"]) == analysis.SECTOR_COUNT]
+        if len(rows) >= 5:
+            per_session.append([statistics.stdev(col) for col in zip(*rows)])
+    return [statistics.mean(col) for col in zip(*per_session)] if per_session else None
+
+
+def _progress_sectors(early, recent, since, good, bad):
+    before, after = _sector_spreads(early), _sector_spreads(recent)
+    if not before or not after:
+        return
+    changes = [b - a for b, a in zip(before, after)]  # positif = plus régulier qu'avant
+    improved = max(range(len(changes)), key=lambda i: changes[i])
+    worst_now = max(range(len(after)), key=lambda i: after[i])
+    if changes[improved] >= 0.05:
+        good.append(_remark(f"S{improved + 1} beaucoup plus régulier depuis le {since}",
+                            f"± {_s(before[improved], 3)} s → ± {_s(after[improved], 3)} s."))
+    if after[worst_now] >= 0.15 and changes[worst_now] < 0.03:
+        bad.append(_remark(f"Ta régularité en S{worst_now + 1} stagne (± {_s(after[worst_now], 3)} s)",
+                           "C'est toujours le secteur le plus irrégulier, session après session.",
+                           weight=after[worst_now]))
+
+
+def _progress_corners(car, track, sessions, early, recent, since, good, bad):
+    record_row = db.record_lap(car, track)
+    record_trace = db.get_trace(record_row["id"]) if record_row else None
+    if not record_trace:
+        return
+    length = sessions[0]["session"]["track_length_m"]
+    corner_times = {}  # id de session -> {virage: temps perdu sur le record}
+    for s in sessions:
+        trace = db.get_trace(s["stats"]["best_lap_id"])
+        if not trace:
+            continue
+        result = analysis.compare(trace, record_trace, points=DEBRIEF_POINTS)
+        corner_times[s["session"]["id"]] = {c["number"]: c["time_lost"] for c in analysis.corner_analysis(result, length)}
+
+    def average(group, number):
+        values = [corner_times[s["session"]["id"]][number] for s in group
+                  if s["session"]["id"] in corner_times and number in corner_times[s["session"]["id"]]]
+        return statistics.mean(values) if values else None
+
+    numbers = sorted({n for times in corner_times.values() for n in times})
+    trends = []
+    for n in numbers:
+        before, after = average(early, n), average(recent, n)
+        if before is not None and after is not None:
+            trends.append({"number": n, "gain": before - after, "gap_now": after})
+    for t in sorted((t for t in trends if t["gain"] >= 0.05), key=lambda t: -t["gain"])[:2]:
+        good.append(_remark(f"Virage {t['number']} : −{_s(t['gain'])} s depuis le {since}",
+                            "Tes meilleurs tours y sont nettement plus rapides qu'au début."))
+    for t in sorted((t for t in trends if t["gain"] <= -0.05), key=lambda t: t["gain"])[:1]:
+        bad.append(_remark(f"Virage {t['number']} : +{_s(-t['gain'])} s par rapport à tes débuts",
+                           "Tu y étais plus rapide lors de tes premières sessions. Compare avec un ancien tour.",
+                           weight=-t["gain"]))
+    stuck = [t for t in trends if t["gap_now"] >= 0.1 and abs(t["gain"]) < 0.03]
+    if stuck:
+        t = max(stuck, key=lambda t: t["gap_now"])
+        bad.append(_remark(f"Virage {t['number']} stagne",
+                           f"Toujours environ {_s(t['gap_now'])} s de plus que sur ton record, sans amélioration. "
+                           "Un bon candidat pour le mode entraînement.", weight=t["gap_now"]))

@@ -6,6 +6,7 @@ import time
 import analysis
 import db
 import objectives
+from voice import speaker, spoken_delta, spoken_time
 
 MS_TO_KMH = 3.6
 RAD_TO_DEG = 57.29578
@@ -71,6 +72,7 @@ class TelemetryRecorder:
         self.car = None
         self.live = {}
         self.record = None  # {"lap_time", "d", "t"} : ton record sur ce couple voiture × circuit
+        self.training = None  # virage choisi pour le mode entraînement
         self._reset_lap_tracking()
 
     # --- état interne -------------------------------------------------------
@@ -126,9 +128,9 @@ class TelemetryRecorder:
 
         session_id = db.create_session(track, track_length, car, session_type)
         objectives.ensure_car(car, track)  # voiture / circuit inconnus : on réplique les objectifs
-        self._load_record()
         with self.lock:
             self.session_id, self.track, self.car = session_id, track, car
+        self._load_record()  # après avoir mis à jour la voiture et le circuit
         print(f"[telemetry] nouvelle session #{session_id} : {track} / {car} ({session_type})")
 
     def _load_record(self):
@@ -136,6 +138,74 @@ class TelemetryRecorder:
         row = db.record_lap(self.car, self.track)
         trace = db.get_trace(row["id"]) if row else None
         self.record = {"lap_time": row["lap_time"], "d": trace["d"], "t": trace["t"]} if trace else None
+        self._update_training_ref()
+
+    # --- mode entraînement --------------------------------------------------------
+
+    def set_training(self, car, track, number, d0, d1):
+        with self.lock:
+            self.training = {"car": car, "track": track, "number": number, "d0": d0, "d1": d1,
+                             "attempts": [], "in_zone": False, "entry": None, "live": None}
+        self._update_training_ref()
+
+    def clear_training(self):
+        with self.lock:
+            self.training = None
+
+    def _update_training_ref(self):
+        tr = self.training
+        if not tr:
+            return
+        rec = self.record if (tr["car"], tr["track"]) == (self.car, self.track) else None
+        if rec is None and (tr["car"], tr["track"]) != (self.car, self.track):
+            row = db.record_lap(tr["car"], tr["track"])
+            trace = db.get_trace(row["id"]) if row else None
+            rec = {"d": trace["d"], "t": trace["t"]} if trace else None
+        tr["ref"] = rec
+        tr["ref_time"] = (analysis._interp(rec["d"], rec["t"], tr["d1"]) - analysis._interp(rec["d"], rec["t"], tr["d0"])
+                          if rec else None)
+
+    def _training_step(self, prev_d, prev_t, d, t, lap):
+        """Chronomètre le virage choisi à chaque passage (entrée et sortie interpolées entre deux mesures)."""
+        tr = self.training
+        if not tr or (tr["car"], tr["track"]) != (self.car, self.track) or d <= prev_d:
+            if tr and d < prev_d - 0.5:
+                tr["in_zone"] = False  # passage de ligne
+            return
+        d0, d1 = tr["d0"], tr["d1"]
+        if not tr["in_zone"] and prev_d < d0 <= d:
+            tr["entry"] = prev_t + (d0 - prev_d) / (d - prev_d) * (t - prev_t)
+            tr["in_zone"] = True
+        if not tr["in_zone"]:
+            return
+        if prev_d < d1 <= d:
+            exit_time = prev_t + (d1 - prev_d) / (d - prev_d) * (t - prev_t)
+            corner_time = exit_time - tr["entry"]
+            best = min((a["time"] for a in tr["attempts"]), default=None)
+            reference = tr.get("ref_time") or best
+            delta = corner_time - reference if reference else None
+            with self.lock:
+                tr["attempts"] = (tr["attempts"] + [{"lap": lap, "time": corner_time, "delta": delta,
+                                                     "personal_best": best is None or corner_time < best}])[-30:]
+                tr["in_zone"] = False
+                tr["live"] = None
+            if delta is not None and db.get_setting("voice") != "off":
+                speaker.say(f"Virage {tr['number']}, {spoken_delta(delta)}")
+        elif tr.get("ref"):
+            ref = tr["ref"]
+            ref_elapsed = analysis._interp(ref["d"], ref["t"], d) - analysis._interp(ref["d"], ref["t"], d0)
+            tr["live"] = (t - tr["entry"]) - ref_elapsed
+
+    def _training_status(self):
+        tr = self.training
+        if not tr:
+            return None
+        times = [a["time"] for a in tr["attempts"]]
+        return {"car": tr["car"], "track": tr["track"], "number": tr["number"], "d0": tr["d0"], "d1": tr["d1"],
+                "ref_time": tr.get("ref_time"), "attempts": tr["attempts"][-10:],
+                "best": min(times) if times else None, "count": len(times),
+                "active": (tr["car"], tr["track"]) == (self.car, self.track),
+                "in_zone": tr["in_zone"], "live": tr["live"] if tr["in_zone"] else None}
 
     def _live_delta(self, lap_dist, lap_time):
         """Écart en direct avec le record, au même endroit du tour (positif = plus lent)."""
@@ -245,6 +315,9 @@ class TelemetryRecorder:
             if on_pit_road:
                 self.flag = "pit"
             trace = self.trace
+            if self.training and trace["d"]:
+                self._training_step(trace["d"][-1], trace["t"][-1], ir["LapDistPct"] or 0.0,
+                                    session_time - self.lap_start, ir["Lap"])
             trace["t"].append(round(session_time - self.lap_start, 4))
             trace["d"].append(round(ir["LapDistPct"] or 0.0, 6))
             trace["speed"].append(round(speed_kmh, 2))
@@ -269,12 +342,27 @@ class TelemetryRecorder:
         except Exception as exc:  # session supprimée entre-temps, disque plein…
             print(f"[telemetry] tour {lap['lap_number']} non enregistré : {exc!r}")
             return
-        if lap_time is not None and lap["flag"] is None and (not self.record or lap_time < self.record["lap_time"]):
+        previous_record = self.record["lap_time"] if self.record else None
+        if lap_time is not None and lap["flag"] is None and (previous_record is None or lap_time < previous_record):
             self._load_record()  # nouveau record : il devient la référence du delta en direct
+        unlocked = []
         try:
-            objectives.evaluate(self.car, self.track)
+            unlocked = objectives.evaluate(self.car, self.track)
         except Exception as exc:
             print(f"[objectifs] erreur : {exc!r}")
+        self._announce_lap(lap_time, lap["flag"], previous_record, unlocked)
+
+    def _announce_lap(self, lap_time, flag, previous_record, unlocked):
+        mode = db.get_setting("voice")
+        if mode == "off" or lap_time is None or flag is not None:
+            return
+        if previous_record is not None and lap_time < previous_record:
+            speaker.say(f"Record battu ! {spoken_time(lap_time)}, {spoken_delta(lap_time - previous_record)}")
+        elif mode == "laps":
+            gap = f", {spoken_delta(lap_time - previous_record)}" if previous_record else ""
+            speaker.say(f"{spoken_time(lap_time)}{gap}")
+        if unlocked and mode == "laps":
+            speaker.say("Objectif réussi" if len(unlocked) == 1 else f"{len(unlocked)} objectifs réussis")
 
     def run(self):
         while True:
@@ -294,4 +382,5 @@ class TelemetryRecorder:
     def status(self):
         with self.lock:
             return {"connected": self.connected, "session_id": self.session_id,
-                    "track": self.track, "car": self.car, **self.live}
+                    "track": self.track, "car": self.car, **self.live,
+                    "training": self._training_status()}

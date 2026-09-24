@@ -20,8 +20,10 @@ function showView(view) {
     progress.view = view;
     $('view-sessions').hidden = view !== 'sessions';
     $('view-progress').hidden = view !== 'progress';
+    $('view-compare').hidden = view !== 'compare';
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
     if (view === 'progress') refreshProgress().catch(console.error);
+    if (view === 'compare') refreshCompareView().catch(console.error);
 }
 document.querySelectorAll('[data-view]').forEach(el => el.addEventListener('click', () => showView(el.dataset.view)));
 
@@ -130,8 +132,10 @@ async function refreshProgress() {
             : 'Référence pas encore établie : fais 3 tours propres sur ce circuit.';
         renderObjectives($('track-objectives'), data.objectives);
         renderRecordChart(await api(`/api/records?car=${encodeURIComponent(progress.car)}&track=${encodeURIComponent(progress.track)}`));
+        renderProgressDebrief(await api(`/api/progress-debrief?car=${encodeURIComponent(progress.car)}&track=${encodeURIComponent(progress.track)}`));
     } else {
         renderRecordChart([]);
+        renderProgressDebrief(null);
         $('track-info').textContent = '';
         $('track-objectives').innerHTML = '';
     }

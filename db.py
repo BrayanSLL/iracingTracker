@@ -58,6 +58,10 @@ CREATE TABLE IF NOT EXISTS objectives (
     completed_at TEXT,                -- NULL tant que l'objectif n'est pas réussi
     UNIQUE (car, track, code)
 );
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
 CREATE TABLE IF NOT EXISTS xp_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     objective_id INTEGER NOT NULL REFERENCES objectives(id),
@@ -289,3 +293,20 @@ def record_history(car, track):
         record = row["session_best"] if record is None else min(record, row["session_best"])
         row["record"] = record
     return rows
+
+
+# --- réglages -------------------------------------------------------------------------
+
+DEFAULT_SETTINGS = {
+    "voice": "records",   # off | records | laps (chaque tour) ; le mode entraînement parle toujours si voice != off
+}
+
+
+def get_setting(key):
+    row = query_one("SELECT value FROM settings WHERE key = ?", (key,))
+    return row["value"] if row else DEFAULT_SETTINGS.get(key)
+
+
+def set_setting(key, value):
+    execute("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value))

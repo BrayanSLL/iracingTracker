@@ -167,6 +167,55 @@ def restore():
     return jsonify({"safety_copy": safety})
 
 
+@app.get("/api/compare-sessions")
+def compare_sessions():
+    result = debrief.compare_sessions(request.args.get("a", type=int), request.args.get("b", type=int))
+    if result is None:
+        abort(404)
+    return jsonify(result)
+
+
+@app.get("/api/progress-debrief")
+def progress_debrief():
+    return jsonify(debrief.progress_debrief(request.args.get("car"), request.args.get("track")))
+
+
+@app.get("/api/settings")
+def get_settings():
+    return jsonify({key: db.get_setting(key) for key in db.DEFAULT_SETTINGS})
+
+
+@app.put("/api/settings")
+def put_settings():
+    data = request.get_json(silent=True) or {}
+    if "voice" in data:
+        if data["voice"] not in ("off", "records", "laps"):
+            abort(400)
+        db.set_setting("voice", data["voice"])
+    return get_settings()
+
+
+@app.post("/api/training")
+def start_training():
+    """Mode entraînement : chronométrer un seul virage, passage après passage."""
+    data = request.get_json(silent=True) or {}
+    try:
+        d0, d1 = float(data["d0"]), float(data["d1"])
+        number = int(data["number"])
+    except (KeyError, TypeError, ValueError):
+        abort(400)
+    if not 0 <= d0 < d1 <= 1:
+        abort(400)
+    recorder.set_training(data.get("car"), data.get("track"), number, d0, d1)
+    return jsonify(recorder.status()["training"])
+
+
+@app.delete("/api/training")
+def stop_training():
+    recorder.clear_training()
+    return "", 204
+
+
 @app.get("/overlay")
 def overlay():
     return render_template("overlay.html")

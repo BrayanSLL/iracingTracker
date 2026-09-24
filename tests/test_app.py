@@ -139,6 +139,85 @@ class AnalysisFeaturesTest(RecorderTest):
         self.assertEqual(history[0]["record"], history[0]["session_best"])
 
 
+class CoachingTest(unittest.TestCase):
+    """Deux sessions simulées sur le même circuit : entraînement, voix, comparaison, progression."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        db.DB_PATH = Path(cls.tmp.name) / "sessions.db"
+        db.init_db()
+        db.set_setting("voice", "laps")
+        cls.spoken = []
+        cls._say = telemetry.speaker.say
+        telemetry.speaker.say = cls.spoken.append
+        cls.sessions = []
+        for seed in (3, 4):
+            fake = FakeIRSDK(seed=seed)
+            recorder = telemetry.TelemetryRecorder(ir=fake, waiter=DemoWaiter(fake, 0))
+            if seed == 4:
+                # entraînement sur le 3e virage du circuit de démo (≈ 1700 m sur 4000 m)
+                recorder._check_connection()
+                recorder._tick()
+                recorder.set_training(recorder.car, recorder.track, 3, 1500 / 4000, 1850 / 4000)
+            drive(recorder, fake, 5 * 85)
+            cls.sessions.append(recorder.session_id)
+            cls.recorder = recorder
+        main.recorder = cls.recorder
+        cls.client = main.app.test_client()
+
+    @classmethod
+    def tearDownClass(cls):
+        telemetry.speaker.say = cls._say
+        cls.tmp.cleanup()
+
+    def test_training_times_each_pass(self):
+        tr = self.recorder.status()["training"]
+        self.assertTrue(tr["active"])
+        self.assertGreaterEqual(tr["count"], 4)
+        self.assertIsNotNone(tr["ref_time"])
+        # la référence (record de la 1re session) est chargée dès le début de la 2e session
+        self.assertTrue(all(a["delta"] is not None for a in tr["attempts"]))
+        for attempt in tr["attempts"][1:]:  # le 1er passage est dans l'out-lap (limiteur de stand)
+            self.assertLess(abs(attempt["delta"]), 1.0)
+        self.assertTrue(any(t.startswith("Virage 3, ") for t in self.spoken))
+
+    def test_live_delta_available_from_session_start(self):
+        self.assertIsNotNone(self.recorder.record)
+
+    def test_spoken_formats(self):
+        from voice import spoken_delta, spoken_time
+        self.assertEqual(spoken_time(82.43), "1 22 4")
+        self.assertEqual(spoken_delta(-0.34), "moins 0 virgule 3")
+        self.assertEqual(spoken_delta(0.04), "plus 4 centièmes")
+        self.assertEqual(spoken_delta(-0.004), "moins 1 centième")
+
+    def test_lap_announcements(self):
+        self.assertTrue(any(t.startswith("Record battu") or " virgule " in t for t in self.spoken), self.spoken)
+
+    def test_settings_api(self):
+        self.assertEqual(self.client.put("/api/settings", json={"voice": "off"}).get_json()["voice"], "off")
+        self.assertEqual(self.client.put("/api/settings", json={"voice": "nimporte"}).status_code, 400)
+        self.client.put("/api/settings", json={"voice": "laps"})
+
+    def test_compare_sessions(self):
+        a, b = self.sessions
+        data = self.client.get(f"/api/compare-sessions?a={a}&b={b}").get_json()
+        self.assertTrue(data["same_track"])
+        self.assertEqual(len(data["sectors"]), 10)
+        self.assertEqual(len(data["corners"]), 6)
+        self.assertTrue(any("Meilleur tour" in v["text"] for v in data["verdict"]))
+
+    def test_progress_debrief(self):
+        data = self.client.get("/api/progress-debrief?car=Voiture de démo&track=Circuit de démo").get_json()
+        self.assertTrue(data["ready"], data)
+        self.assertEqual(data["period"]["sessions"], 2)
+
+    def test_training_api(self):
+        res = self.client.post("/api/training", json={"car": "X", "track": "Y", "number": 1, "d0": 0.5, "d1": 0.2})
+        self.assertEqual(res.status_code, 400)
+
+
 class DebriefTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

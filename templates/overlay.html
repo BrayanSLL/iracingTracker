@@ -23,9 +23,9 @@
     </style>
 </head>
 <body>
-<div class="label">Delta vs ton record</div>
+<div class="label" id="label">Delta vs ton record</div>
 <div class="delta" id="delta">—</div>
-<div class="row"><span>Prévu <b id="predicted">—</b></span><span>Record <b id="record">—</b></span></div>
+<div class="row"><span id="left-label">Prévu <b id="predicted">—</b></span><span id="right-label">Record <b id="record">—</b></span></div>
 
 <script>
     const $ = id => document.getElementById(id);
@@ -38,6 +38,21 @@
         try {
             const s = await (await fetch('/api/status')).json();
             const el = $('delta');
+            const tr = s.training;
+            if (tr && tr.active && s.connected) {
+                // mode entraînement : uniquement le virage choisi
+                $('label').textContent = `Entraînement · virage ${tr.number}`;
+                const last = tr.attempts[tr.attempts.length - 1];
+                const value = tr.in_zone ? tr.live : (last ? last.delta : null);
+                el.className = 'delta' + (value == null ? '' : value > 0 ? ' loss' : ' gain');
+                el.textContent = value == null ? (tr.in_zone ? '…' : '—') : (value > 0 ? '+' : '−') + Math.abs(value).toFixed(2);
+                $('left-label').innerHTML = `Passages <b>${tr.count}</b>`;
+                $('right-label').innerHTML = `Meilleur <b>${tr.best != null ? tr.best.toFixed(2) + ' s' : '—'}</b>`;
+                return;
+            }
+            $('label').textContent = 'Delta vs ton record';
+            $('left-label').innerHTML = 'Prévu <b id="predicted">—</b>';
+            $('right-label').innerHTML = 'Record <b id="record">—</b>';
             if (!s.connected || !s.on_track) {
                 el.className = 'delta waiting';
                 el.textContent = s.connected ? 'Pas en piste' : 'iRacing non lancé';

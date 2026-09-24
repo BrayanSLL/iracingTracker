@@ -38,6 +38,30 @@ Le débrief apparaît à partir de 3 tours propres. L'analyse des virages compar
 
 ![Débrief de session](docs/debrief.png)
 
+**Coaching**
+- **Comparer deux sessions** (onglet *Comparer*, ou bouton « Comparer… » dans une session) : même voiture,
+  même circuit, côte à côte. Tu vois tes notes des deux sessions, un verdict (« meilleur tour plus rapide de
+  0,21 s », « plus régulier », « gains surtout au virage 3 »), les chiffres avec l'écart B − A, les meilleurs
+  secteurs et chaque virage (meilleur tour de B contre meilleur tour de A). C'est idéal pour savoir si un
+  nouveau setup t'a fait gagner du temps.
+- **Débrief de progression** (onglet *Progression*, pour chaque circuit) : c'est le débrief de session, mais sur
+  toutes tes sessions. Tes premières sessions sont comparées aux plus récentes : record, rythme moyen,
+  régularité, secteurs, et chaque virage par rapport à ton record. Exemples : « Virage 2 : −0,20 s depuis le
+  03/09 », « Ta régularité en S5 stagne », « Virage 4 stagne ». Il faut au moins 2 sessions avec 3 tours propres.
+- **Mode entraînement** : dans l'analyse virage par virage, « 🎯 S'entraîner sur ce virage ». Chaque passage dans
+  ce virage est chronométré (entrée et sortie interpolées entre deux mesures) et comparé au même virage de ton
+  record. L'overlay n'affiche plus que ce virage : l'écart en direct pendant le passage, puis le résultat.
+  Un bandeau dans la session liste tes derniers passages. « Arrêter l'entraînement » revient au delta normal.
+- **Annonces vocales** avec la synthèse vocale de Windows (rien à installer ; une voix française est utilisée si
+  elle est présente). Choix dans la barre du haut :
+  *Voix coupée*, *Records seulement* (« Record battu ! 1 22 4, moins 0 virgule 3 ») ou *Chaque tour*
+  (« 1 22 8, plus 0 virgule 4 », « Objectif réussi »). En mode entraînement, chaque passage est annoncé
+  (« Virage 3, moins 4 centièmes »), sauf si la voix est coupée.
+
+![Comparaison de deux sessions](docs/comparaison.png)
+
+![Débrief de progression](docs/progression-debrief.png)
+
 **Télémétrie**
 - Enregistrement de **chaque tour à 60 Hz** : vitesse, **accélérateur**, **frein**, rapport engagé, angle du volant
   (≈ un point tous les 80 cm à 180 km/h)
@@ -141,7 +165,8 @@ Windows, mise à jour 60 fois par seconde, et signale chaque mise à jour par un
 | `telemetry.py` | Lecture d'iRacing (via [`pyirsdk`](https://github.com/kutu/pyirsdk)), détection des tours, enregistrement des traces |
 | `analysis.py` | Nettoyage des traces, secteurs, alignement de deux tours, delta, statistiques, virages, carte |
 | `db.py` | Base SQLite (sessions, tours, traces) |
-| `debrief.py` | Débrief automatique d'une session (points forts, à améliorer, priorité) |
+| `debrief.py` | Débrief d'une session, comparaison de deux sessions, débrief de progression sur plusieurs sessions |
+| `voice.py` | Annonces vocales (synthèse vocale de Windows via PowerShell) |
 | `objectives.py` | Objectifs (modèles, réplication par voiture et circuit, évaluation), XP et niveaux |
 | `demo.py` | Faux iRacing pour la démo et les tests |
 | `templates/`, `static/` | Interface (graphiques avec [uPlot](https://github.com/leeoniya/uPlot), inclus dans le repo : aucun accès internet nécessaire) |
@@ -181,6 +206,7 @@ Windows, mise à jour 60 fois par seconde, et signale chaque mise à jour par un
 | `cars`, `car_tracks` | voitures et couples voiture × circuit connus |
 | `objectives` | objectifs répliqués pour chaque voiture et circuit : valeur actuelle, date de réussite, XP |
 | `xp_events` | historique de l'XP gagnée |
+| `settings` | réglages (annonces vocales) |
 
 Le dossier `data/` est ignoré par git : tes sessions restent sur ta machine.
 
@@ -256,6 +282,7 @@ Un tour gêné par le trafic fausse aussi la comparaison.
 | Le premier tour est marqué « stand » | Normal : c'est l'out-lap. |
 | La fenêtre ne s'ouvre pas | L'application ouvre alors le navigateur. Tu peux aussi utiliser `python main.py --browser`. Sur Windows, pywebview a besoin de Microsoft Edge WebView2, déjà installé sur Windows 10 et 11 à jour. |
 | `ModuleNotFoundError` | Active l'environnement virtuel (`venv\Scripts\activate`), puis relance `pip install -r requirements.txt`. |
+| Pas de voix | Vérifie le réglage 🔊 dans la barre du haut et le volume de Windows. Sans voix française installée (Paramètres Windows → Heure et langue → Voix), Windows lit avec sa voix par défaut. |
 | L'overlay n'apparaît pas par-dessus le jeu | Passe iRacing en mode fenêtré sans bordure (Options → Graphismes). |
 | La carte du circuit est inversée (en miroir) | Le sens de `YawNorth` n'a pas pu être vérifié sans iRacing. Signale-le : c'est une ligne à changer dans `analysis.track_map`. |
 | Port 5000 déjà utilisé | `python main.py --port 5001` |

@@ -12,8 +12,16 @@
     <div class="brand">🏁 iRacing Telemetry</div>
     <nav class="tabs" role="tablist">
         <button class="tab active" type="button" data-view="sessions">Sessions</button>
+        <button class="tab" type="button" data-view="compare">Comparer</button>
         <button class="tab" type="button" data-view="progress">Progression</button>
     </nav>
+    <label class="voice-select" title="Annonces vocales">🔊
+        <select id="voice-mode" aria-label="Annonces vocales">
+            <option value="off">Voix coupée</option>
+            <option value="records">Records seulement</option>
+            <option value="laps">Chaque tour</option>
+        </select>
+    </label>
     <button class="level-chip" type="button" data-view="progress" title="Voir ta progression">
         <span class="level-num" id="level-num">Niv. 1</span>
         <span class="level-bar"><span class="level-fill" id="level-fill"></span></span>
@@ -62,10 +70,13 @@
                     <div class="save-state muted" id="save-state"></div>
                 </div>
                 <div class="actions">
+                    <button class="btn" id="compare-btn" type="button">Comparer…</button>
                     <a class="btn" id="export-btn" download>Exporter CSV</a>
                     <button class="btn danger" id="delete-btn" type="button">Supprimer la session</button>
                 </div>
             </section>
+
+            <div class="training-banner" id="training-banner" hidden></div>
 
             <section class="tiles">
                 <div class="tile"><div class="tile-label">Meilleur tour</div><div class="tile-value" id="stat-best">—</div></div>
@@ -177,6 +188,15 @@
             <div class="panel-title">Objectifs par circuit <span class="muted">— temps cibles calculés à partir de ta propre référence</span></div>
             <div class="chips" id="track-chips"></div>
             <div class="track-info muted" id="track-info"></div>
+            <div class="debrief progress-debrief" id="progress-debrief" hidden>
+                <div class="tele-title">Débrief de progression <span class="muted" id="progress-period"></span></div>
+                <div class="debrief-priority" id="progress-priority" hidden></div>
+                <div class="debrief-grid" id="progress-grid">
+                    <div><div class="debrief-head good">✓ Ce qui progresse</div><ul class="debrief-list good-list" id="progress-good"></ul></div>
+                    <div><div class="debrief-head bad">⚠ Ce qui stagne ou recule</div><ul class="debrief-list bad-list" id="progress-bad"></ul></div>
+                </div>
+                <div class="empty small" id="progress-empty" hidden></div>
+            </div>
             <div class="record-box" id="record-box" hidden>
                 <div class="tele-title">Historique du record <span class="muted">— plus bas = plus rapide</span></div>
                 <div class="chart" id="record-chart"></div>
@@ -187,10 +207,47 @@
     </div>
 </main>
 
+<main class="progress-view" id="view-compare" hidden>
+    <section class="panel">
+        <div class="panel-title">Comparer deux sessions <span class="muted">— même voiture, même circuit</span></div>
+        <div class="compare-pickers">
+            <label>Session A (avant) <select id="compare-a"></select></label>
+            <button class="btn" id="compare-swap" type="button" title="Inverser A et B" aria-label="Inverser A et B">⇄</button>
+            <label>Session B (après) <select id="compare-b"></select></label>
+        </div>
+        <div class="empty small" id="compare-empty">Choisis deux sessions sur le même circuit avec la même voiture.</div>
+    </section>
+    <div id="compare-result" hidden>
+        <section class="compare-heads" id="compare-heads"></section>
+        <section class="panel">
+            <div class="panel-title">Verdict</div>
+            <ul class="verdict" id="compare-verdict"></ul>
+        </section>
+        <section class="panel">
+            <div class="panel-title">Chiffres</div>
+            <div class="table-wrap">
+                <table class="laps compare-table">
+                    <thead><tr><th>Mesure</th><th>A</th><th>B</th><th>Écart (B − A)</th></tr></thead>
+                    <tbody id="compare-metrics"></tbody>
+                </table>
+            </div>
+        </section>
+        <section class="panel" id="compare-sectors-panel">
+            <div class="panel-title">Meilleurs secteurs <span class="muted">— bleu : B plus rapide, rouge : B plus lent</span></div>
+            <div class="sectors" id="compare-sectors"></div>
+        </section>
+        <section class="panel" id="compare-corners-panel">
+            <div class="panel-title">Virage par virage <span class="muted">— meilleur tour de B comparé au meilleur tour de A</span></div>
+            <div class="corners" id="compare-corners"></div>
+        </section>
+    </div>
+</main>
+
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script src="{{ url_for('static', filename='vendor/uPlot.iife.min.js') }}"></script>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 <script src="{{ url_for('static', filename='progress.js') }}"></script>
+<script src="{{ url_for('static', filename='coaching.js') }}"></script>
 </body>
 </html>
