@@ -372,6 +372,7 @@ async function loadCompare() {
     showTeleMessage(null);
     state.compare = data;
     renderSectors(data);
+    renderEngineer(data);
     renderTeleCharts(data);
     renderAnalysis(data);
 }
@@ -433,7 +434,7 @@ function renderTeleCharts(data) {
     const channel = (title, key, height, fmt, scale = 1, extra = {}) => ({
         title, height, extra,
         series: [  // référence dessinée d'abord, le tour analysé reste au-dessus
-            ...(hasRef ? [{ label: refName, values: data.ref[key].map(v => v * scale), color: refColor, fmt }] : []),
+            ...(hasRef && data.ref[key] ? [{ label: refName, values: data.ref[key].map(v => v * scale), color: refColor, fmt }] : []),
             { label: lapName, values: data.lap[key].map(v => v * scale), color: lapColor, fmt },
         ],
     });
@@ -441,6 +442,11 @@ function renderTeleCharts(data) {
     blocks.push(channel('Accélérateur (%)', 'throttle', 150, v => `${v.toFixed(0)} %`, 100, { range: [0, 100] }));
     blocks.push(channel('Frein (%)', 'brake', 150, v => `${v.toFixed(0)} %`, 100, { range: [0, 100] }));
     blocks.push(channel('Rapport', 'gear', 110, v => `${v}`, 1, { stepped: true }));
+    if (data.lap.rpm) {
+        blocks.push(channel(data.lap_meta && data.lap_meta.shift_rpm ? 'Régime moteur (tr/min) — ligne : régime de passage conseillé' : 'Régime moteur (tr/min)', 'rpm', 140, v => `${Math.round(v)} tr/min`, 1,
+            { stepped: true, marker: data.lap_meta && data.lap_meta.shift_rpm }));
+    }
+    if (data.lap.lat) blocks.push(channel('Accélération latérale (G)', 'lat', 130, v => `${v.toFixed(2)} G`));
     blocks.push(channel('Volant (°)', 'steer', 130, v => `${v.toFixed(0)}°`));
 
     const width = $('tele-charts').clientWidth;
@@ -482,8 +488,8 @@ function renderTeleCharts(data) {
                     teleCharts.forEach(other => other !== u && other.setScale('x', { min, max }));
                     syncingZoom = false;
                 }],
-                draw: block.zeroLine ? [u => {
-                    const y = Math.round(u.valToPos(0, 'y', true));
+                draw: block.zeroLine || extra.marker ? [u => {
+                    const y = Math.round(u.valToPos(block.zeroLine ? 0 : extra.marker, 'y', true));
                     const ctx = u.ctx;
                     ctx.save();
                     ctx.strokeStyle = cssVar('--text-muted');
@@ -751,3 +757,38 @@ async function loadDebrief(sessionId) {
     $('debrief-good').innerHTML = data.good.map(item).join('') || '<li class="none">Rien de marquant pour l\'instant.</li>';
     $('debrief-bad').innerHTML = data.bad.map(item).join('') || '<li class="none">Rien à signaler, beau travail.</li>';
 }
+
+// --- rapport de l'ingénieur ----------------------------------------------------------------
+
+function renderEngineer(data) {
+    const report = data && data.engineer;
+    $('engineer').hidden = !report;
+    if (!report) return;
+    $('engineer-sub').textContent = report.has_reference
+        ? '— ta façon de piloter, comparée au tour de référence'
+        : '— choisis une référence pour une analyse plus complète';
+    const cls = { 'solide': 'solide', 'à surveiller': 'surveiller', 'à travailler': 'travailler' };
+    $('engineer-profile').innerHTML = report.profile.map(p => `<div class="profile-chip ${cls[p.status]}">
+        <div class="pc-topic">${p.topic}</div>
+        <div class="pc-status">${p.status}${p.count ? ` · ${p.count} remarque${p.count > 1 ? 's' : ''}` : ''}</div>
+    </div>`).join('');
+    const missing = report.missing.length
+        ? `<div class="muted small-text">Tour enregistré sans ${report.missing.join(', ')} : une partie de l'analyse n'est pas possible.</div>` : '';
+    $('engineer-remarks').innerHTML = (report.remarks.length ? report.remarks.map(r => {
+        const corner = r.corner && data.corners.find(c => c.number === r.corner);
+        return `<button type="button" class="eng sev-${r.severity}"${corner ? ` data-start="${corner.start}" data-end="${corner.end}"` : ''}>
+            <span class="e-where">${r.corner ? `V${r.corner}` : 'Tour'} · ${escapeHtml(r.topic)}</span>
+            <span class="e-obs">${escapeHtml(r.observation)}</span>
+            <span class="e-why">${escapeHtml(r.consequence)}</span>
+            <span class="e-do">${escapeHtml(r.action)}</span>
+        </button>`;
+    }).join('') : '<div class="empty small">Rien à redire sur ce tour 👌</div>') + missing;
+}
+
+$('engineer-remarks').addEventListener('click', e => {
+    const el = e.target.closest('.eng[data-start]');
+    if (!el || !teleCharts.length) return;
+    const margin = trackLength() ? 60 : 1.5;
+    teleCharts[0].setScale('x', { min: Number(el.dataset.start) - margin, max: Number(el.dataset.end) + margin });
+    $('tele-charts').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});

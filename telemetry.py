@@ -10,6 +10,7 @@ from voice import speaker, spoken_delta, spoken_time
 
 MS_TO_KMH = 3.6
 RAD_TO_DEG = 57.29578
+G = 9.81
 LAP_TIME_TIMEOUT = 3.0  # secondes d'attente max pour que LapLastLapTime se mette à jour
 
 
@@ -93,7 +94,8 @@ class TelemetryRecorder:
         self.flag = flag
         self.fuel_start = fuel_start
         self.lap_start = lap_start  # SessionTime au début du tour
-        self.trace = {"t": [], "d": [], "speed": [], "throttle": [], "brake": [], "gear": [], "steer": [], "yaw": []}
+        self.trace = {"t": [], "d": [], "speed": [], "throttle": [], "brake": [], "gear": [], "steer": [], "yaw": [],
+                      "rpm": [], "lat": [], "lon": [], "abs": [], "clutch": []}
 
     # --- connexion ----------------------------------------------------------
 
@@ -126,7 +128,10 @@ class TelemetryRecorder:
         track = weekend.get("TrackDisplayName")
         track_length = parse_track_length(weekend.get("TrackLength"))
 
-        session_id = db.create_session(track, track_length, car, session_type)
+        # régime de passage conseillé (témoin de changement de rapport) et zone rouge de la voiture
+        shift_rpm = driver_info.get("DriverCarSLShiftRPM") or None
+        redline = driver_info.get("DriverCarRedLine") or None
+        session_id = db.create_session(track, track_length, car, session_type, shift_rpm, redline)
         objectives.ensure_car(car, track)  # voiture / circuit inconnus : on réplique les objectifs
         with self.lock:
             self.session_id, self.track, self.car = session_id, track, car
@@ -326,6 +331,12 @@ class TelemetryRecorder:
             trace["gear"].append(gear)
             trace["steer"].append(round((ir["SteeringWheelAngle"] or 0.0) * RAD_TO_DEG, 1))
             trace["yaw"].append(round(ir["YawNorth"] or 0.0, 5))
+            # analyse du pilotage : régime, accélérations (en G), ABS, embrayage
+            trace["rpm"].append(round(ir["RPM"] or 0.0))
+            trace["lat"].append(round((ir["LatAccel"] or 0.0) / G, 3))
+            trace["lon"].append(round((ir["LongAccel"] or 0.0) / G, 3))
+            trace["abs"].append(1 if ir["BrakeABSactive"] else 0)
+            trace["clutch"].append(round(ir["Clutch"] if ir["Clutch"] is not None else 1.0, 3))
 
             self.prev_last_lap_time = last_lap_time
         finally:

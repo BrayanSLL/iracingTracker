@@ -14,6 +14,7 @@ import db  # noqa: E402
 import debrief  # noqa: E402
 import main  # noqa: E402
 import objectives  # noqa: E402
+import technique  # noqa: E402
 import telemetry  # noqa: E402
 from demo import DemoWaiter, FakeIRSDK  # noqa: E402
 
@@ -113,6 +114,7 @@ class AnalysisFeaturesTest(RecorderTest):
         data = self.client.get(f"/api/compare?lap={lap_id}&ref={detail['record']['id']}").get_json()
         self.assertIn("corners", data)
         self.assertIsNotNone(data["map"])
+        self.assertEqual(len(data["engineer"]["profile"]), 4)
 
     def test_live_delta_against_record(self):
         self.assertIsNotNone(self.recorder.record)
@@ -216,6 +218,60 @@ class CoachingTest(unittest.TestCase):
     def test_training_api(self):
         res = self.client.post("/api/training", json={"car": "X", "track": "Y", "number": 1, "d0": 0.5, "d1": 0.2})
         self.assertEqual(res.status_code, 400)
+
+
+class TechniqueTest(unittest.TestCase):
+    """Le simulateur de démo tire au sort des défauts de pilotage : l'analyse doit les retrouver."""
+
+    def test_detects_simulated_driving_errors(self):
+        tmp = tempfile.TemporaryDirectory()
+        db.DB_PATH = Path(tmp.name) / "sessions.db"
+        db.init_db()
+        fake = FakeIRSDK(seed=7)
+        recorder = telemetry.TelemetryRecorder(ir=fake, waiter=DemoWaiter(fake, 0))
+        waiter, styles = DemoWaiter(fake, 0), {}
+        for _ in range(60 * 85 * 8):
+            waiter.wait()
+            styles[fake.lap] = (fake.style, fake.shift_factor)
+            recorder._check_connection()
+            recorder._tick()
+        laps = [l for l in db.list_laps(recorder.session_id) if l["lap_time"] and not l["flag"]]
+        best = min(laps, key=lambda l: l["lap_time"])
+        meta = db.lap_meta(best["id"])
+        ref_style = styles[best["lap_number"]][0]
+        missed = extra = 0
+        for lap in laps:
+            if lap["id"] == best["id"]:
+                continue
+            result = analysis.compare(db.get_trace(lap["id"]), db.get_trace(best["id"]))
+            report = technique.lap_report(result, meta)
+            self.assertEqual(report["missing"], [])
+            got = {(r["corner"], r["code"]) for r in report["remarks"]}
+            style, shift_factor = styles[lap["lap_number"]]
+            expected = {(None, "early_shift")} if shift_factor < 1 else set()
+            for i, (mine, ref) in enumerate(zip(style, ref_style), start=1):
+                if mine["brake_ramp"] > 0.1 and ref["brake_ramp"] < 0.1:
+                    expected.add((i, "brake_attack"))
+                if mine["throttle_lift"]:
+                    expected.add((i, "throttle_lift"))
+                if mine["long_gear"] and not ref["long_gear"]:
+                    expected.add((i, "long_gear"))
+            missed += len(expected - got)
+            extra += len(got - expected)
+        tmp.cleanup()
+        self.assertEqual((missed, extra), (0, 0))
+
+
+class HabitsTest(unittest.TestCase):
+    def test_habits_mix_corner_and_whole_lap_errors(self):
+        def remark(corner, code):
+            return {"corner": corner, "code": code, "topic": "Rapports", "observation": "o.", "action": "a.",
+                    "consequence": "c.", "severity": 2}
+        reports = [{"remarks": [remark(None, "early_shift"), remark(3, "long_gear")], "missing": []}] * 4
+        good, bad = [], []
+        debrief._habits(reports, good, bad)  # plantait : tri entre None et un numéro de virage
+        self.assertEqual(len(bad), 2)
+        self.assertIn("sur tout le tour", " ".join(r["title"] for r in bad))
 
 
 class DebriefTest(unittest.TestCase):

@@ -21,6 +21,7 @@ import analysis
 import db
 import debrief
 import objectives
+import technique
 from telemetry import TelemetryRecorder
 
 app = Flask(__name__)
@@ -102,6 +103,7 @@ def compare():
     result["lap_meta"] = lap
     result["ref_meta"] = ref if ref_trace else None
     result["corners"] = analysis.corner_analysis(result, lap["track_length_m"])
+    result["engineer"] = technique.lap_report(result, lap)
     result["map"] = analysis.track_map(ref_trace or lap_trace, result["d"])
     if result["map"] is None and ref_trace:
         result["map"] = analysis.track_map(lap_trace, result["d"])

@@ -13,6 +13,8 @@ V_MAX = 78.0           # m/s
 ACCEL = 6.5            # m/s² en accélération
 DECEL = 13.0           # m/s² au freinage
 PIT_EXIT = 250.0       # la sortie des stands se termine à 250 m
+SHIFT_RPM = 7000.0     # régime de passage conseillé
+REDLINE = 7500.0
 LAP_TIME_LAG = 6       # ticks avant que LapLastLapTime soit à jour (comme le vrai iRacing)
 
 # (position du virage en m, vitesse mini en m/s, sens)
@@ -65,6 +67,11 @@ class FakeIRSDK:
         self.throttle = 0.0
         self.brake = 0.0
         self.steer = 0.0
+        self.rpm = 1500.0
+        self.lat_accel = 0.0
+        self.long_accel = 0.0
+        self.abs_active = False
+        self.brake_timer = 0.0
         self.pit_road = True
         self._new_lap_profile()
 
@@ -78,6 +85,20 @@ class FakeIRSDK:
             speeds.append(v_min * factor)
             offsets.append(self.rng.uniform(0, 12))
         self.profile = speed_profile(speeds, offsets)
+        # style de pilotage du tour (pour que l'analyse du pilotage ait quelque chose à dire)
+        self.style = [{"brake_ramp": 0.35 if self.rng.random() < 0.25 else 0.06,   # freinage timide
+                       "throttle_lift": self.rng.random() < 0.2,                     # hésitation en sortie
+                       "long_gear": self.rng.random() < 0.15}                        # rapport trop long
+                      for _ in CORNERS]
+        self.shift_factor = 0.85 if self.rng.random() < 0.25 else 1.0             # passages de rapport trop tôt
+
+    @staticmethod
+    def _corner_at(dist):
+        """Indice du virage dont on est proche (±250 m autour du point de corde), ou None."""
+        for index, (pos, _, _) in enumerate(CORNERS):
+            if abs(dist - pos) < 250:
+                return index
+        return None
 
     # --- API pyirsdk utilisée par telemetry.py --------------------------------
 
@@ -114,7 +135,13 @@ class FakeIRSDK:
             "YawNorth": (heading(self.dist) + math.pi) % (2 * math.pi) - math.pi,
             "FuelLevel": self.fuel,
             "WeekendInfo": {"TrackDisplayName": "Circuit de démo", "TrackLength": "4.00 km"},
-            "DriverInfo": {"DriverCarIdx": 0, "Drivers": [{"CarIdx": 0, "CarScreenName": "Voiture de démo"}]},
+            "DriverInfo": {"DriverCarIdx": 0, "DriverCarSLShiftRPM": SHIFT_RPM, "DriverCarRedLine": REDLINE,
+                           "Drivers": [{"CarIdx": 0, "CarScreenName": "Voiture de démo"}]},
+            "RPM": self.rpm,
+            "LatAccel": self.lat_accel,
+            "LongAccel": self.long_accel,
+            "BrakeABSactive": self.abs_active,
+            "Clutch": 1.0,
             "SessionInfo": {"Sessions": [{"SessionNum": 0, "SessionType": "Practice"}]},
         }
         return values.get(key)
@@ -131,17 +158,35 @@ class FakeIRSDK:
         ahead = self.profile[(i + 3) % n]
         if self.pit_road:
             target = ahead = min(target, 22.0)  # limiteur de vitesse dans les stands
+        previous_speed = self.speed
         self.speed += max(-DECEL * DT, min(ACCEL * DT, target - self.speed))
+        corner = self._corner_at(self.dist)
+        style = self.style[corner] if corner is not None else {}
+        apex_gap = self.dist - CORNERS[corner][0] if corner is not None else None
         if ahead < target - 0.05:  # zone de freinage
+            self.brake_timer += DT
+            ramp = min(1.0, self.brake_timer / style.get("brake_ramp", 0.06))
             self.throttle = 0.0
-            self.brake = min(1.0, 0.55 + (target - ahead) / 3) * self.rng.uniform(0.97, 1.0)
+            # pic de pression au début, puis relâchement progressif en approchant de la corde (trail braking)
+            apex_speed = CORNERS[corner][1] if corner is not None else ahead
+            release = 0.35 + 0.65 * max(0.0, min(1.0, (self.speed - apex_speed) / 15))
+            self.brake = 0.97 * ramp * release * self.rng.uniform(0.98, 1.0)
         elif ahead > target + 0.05:  # accélération
-            self.throttle = 1.0
+            self.brake_timer = 0.0
+            self.throttle = 0.55 if style.get("throttle_lift") and apex_gap is not None and 40 < apex_gap < 70 else 1.0
             self.brake = 0.0
         else:  # vitesse stabilisée (corde, ligne droite en butée)
+            self.brake_timer = 0.0
             self.throttle = 1.0 if target >= V_MAX - 0.5 else 0.3 + self.rng.uniform(0, 0.05)
             self.brake = 0.0
-        self.gear = min(6, 1 + int(self.speed / 14))
+        self.abs_active = self.brake > 0.97 and self.rng.random() < 0.5
+        self.gear = min(6, 1 + int(self.speed / (14 * self.shift_factor)))
+        if style.get("long_gear") and apex_gap is not None and -150 < apex_gap < 80:
+            self.gear = min(6, self.gear + 1)  # on ne rétrograde pas assez pour ce virage
+        self.rpm = max(1500.0, self.speed * SHIFT_RPM / (self.gear * 14))
+        self.long_accel = (self.speed - previous_speed) / DT
+        curvature = (heading(self.dist + 1) - heading(self.dist - 1)) / 2  # rad / m
+        self.lat_accel = self.speed ** 2 * curvature
         self.steer = sum(math.copysign(1.2, angle) * math.exp(-((self.dist - pos) / 45) ** 2)
                          for (pos, _, _), angle in zip(CORNERS, TURN_ANGLES))
         self.fuel -= 0.00045 + 0.0012 * self.throttle

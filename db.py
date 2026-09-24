@@ -105,7 +105,7 @@ def query_one(sql, params=()):
 
 # Colonnes ajoutées après la première version : ajoutées aux bases existantes au démarrage.
 MIGRATIONS = {
-    "sessions": {"name": "TEXT", "note": "TEXT"},
+    "sessions": {"name": "TEXT", "note": "TEXT", "shift_rpm": "REAL", "redline_rpm": "REAL"},
 }
 
 
@@ -129,10 +129,11 @@ def now():
 
 # --- sessions -----------------------------------------------------------------
 
-def create_session(track, track_length_m, car, session_type):
+def create_session(track, track_length_m, car, session_type, shift_rpm=None, redline_rpm=None):
     return execute(
-        "INSERT INTO sessions (started_at, track, track_length_m, car, session_type) VALUES (?, ?, ?, ?, ?)",
-        (now(), track, track_length_m, car, session_type),
+        """INSERT INTO sessions (started_at, track, track_length_m, car, session_type, shift_rpm, redline_rpm)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (now(), track, track_length_m, car, session_type, shift_rpm, redline_rpm),
     )
 
 
@@ -272,7 +273,7 @@ def record_lap(car, track, exclude_id=None):
 def lap_meta(lap_id):
     row = query_one("""
         SELECT l.id, l.lap_number, l.lap_time, l.sectors, l.session_id, s.started_at, s.name AS session_name,
-               s.car, s.track, s.track_length_m
+               s.car, s.track, s.track_length_m, s.shift_rpm, s.redline_rpm
         FROM laps l JOIN sessions s ON s.id = l.session_id WHERE l.id = ?
     """, (lap_id,))
     if row:

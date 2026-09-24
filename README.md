@@ -38,6 +38,34 @@ Le débrief apparaît à partir de 3 tours propres. L'analyse des virages compar
 
 ![Débrief de session](docs/debrief.png)
 
+**Rapport de l'ingénieur** (dans la télémétrie de chaque tour) : l'analyse regarde **la forme** de tes courbes,
+pas seulement les temps, et chaque remarque suit le schéma d'un ingénieur de course :
+**observation → conséquence → action**. Par exemple :
+
+> **V3 · Freinage.** Tu mets 0,30 s à atteindre ta pression de freinage maximale contre 0,05 s sur ta référence.
+> Les premiers mètres de freinage, où la voiture a le plus d'appui, sont sous-exploités.
+> → Attaque la pédale franchement d'un coup, puis dose en relâchant.
+
+Ce qui est analysé, virage par virage :
+- **Freinage :** vitesse d'attaque de la pédale, pression maximale, ABS, relâchement pendant que tu tournes
+  (trail braking), frein et accélérateur enfoncés ensemble.
+- **Accélération :** hésitations (tu relâches puis remets les gaz), remise des gaz brutale, temps pour passer à fond.
+- **Rapports :** régime au point de corde (rapport trop long), passages de rapport trop tôt par rapport au témoin
+  de la voiture, temps passé au rupteur.
+- **Volant :** corrections répétées (voiture instable), sous-virage (plus de volant pour moins de G latéral).
+
+Un **profil de pilotage** résume le tour (Freinage / Accélération / Rapports / Volant : solide, à surveiller,
+à travailler). Un clic sur une remarque zoome les graphiques sur le virage. Le débrief de session signale aussi
+tes **habitudes**, c'est-à-dire les erreurs qui reviennent sur au moins 40 % des tours
+(« Habitude · freinage (virage 2) : 6 tours sur 15 »).
+
+Les graphiques de télémétrie affichent maintenant aussi le régime moteur (avec le régime de passage conseillé)
+et l'accélération latérale. Tous les seuils sont regroupés en haut de `technique.py`. Ils dépendent de la
+voiture, donc ajuste-les après tes premières vraies sessions. Les tours enregistrés avant cette version n'ont
+pas le régime, les G ni l'ABS : leur analyse est partielle, et l'interface le signale.
+
+![Rapport de l'ingénieur](docs/ingenieur.png)
+
 **Coaching**
 - **Comparer deux sessions** (onglet *Comparer*, ou bouton « Comparer… » dans une session) : même voiture,
   même circuit, côte à côte. Tu vois tes notes des deux sessions, un verdict (« meilleur tour plus rapide de
@@ -166,6 +194,7 @@ Windows, mise à jour 60 fois par seconde, et signale chaque mise à jour par un
 | `analysis.py` | Nettoyage des traces, secteurs, alignement de deux tours, delta, statistiques, virages, carte |
 | `db.py` | Base SQLite (sessions, tours, traces) |
 | `debrief.py` | Débrief d'une session, comparaison de deux sessions, débrief de progression sur plusieurs sessions |
+| `technique.py` | Analyse du pilotage façon ingénieur (freinage, accélération, rapports, volant) |
 | `voice.py` | Annonces vocales (synthèse vocale de Windows via PowerShell) |
 | `objectives.py` | Objectifs (modèles, réplication par voiture et circuit, évaluation), XP et niveaux |
 | `demo.py` | Faux iRacing pour la démo et les tests |
@@ -178,7 +207,8 @@ Windows, mise à jour 60 fois par seconde, et signale chaque mise à jour par un
   souvent encore le temps du tour *précédent* : on attend qu'il change (3 s maximum) avant d'enregistrer.
   Si iRacing ne donne pas de temps valide (`-1`), le tour est gardé sans temps.
 - **Trace du tour** : chaque échantillon contient le temps depuis le début du tour, la position sur le tour
-  (`LapDistPct`, de 0 à 1), la vitesse, l'accélérateur, le frein, le rapport, le volant et le cap (`YawNorth`). Les échantillons
+  (`LapDistPct`, de 0 à 1), la vitesse, l'accélérateur, le frein, le rapport, le volant, le cap (`YawNorth`),
+  le régime, les accélérations latérale et longitudinale, l'ABS et l'embrayage. Les échantillons
   « de l'autre côté de la ligne » sont retirés. Chaque trace est compressée (environ 100 Ko par tour).
 - **Comparaison** : les deux tours sont ré-échantillonnés sur la même grille de distance. Le delta est
   la différence de temps au même endroit de la piste.

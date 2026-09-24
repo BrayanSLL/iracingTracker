@@ -8,6 +8,7 @@ import statistics
 
 import analysis
 import db
+import technique
 
 MAX_LAPS_ANALYSED = 15      # tours comparés virage par virage (les plus récents)
 DEBRIEF_POINTS = 2000       # grille plus grossière que l'affichage : suffisant et bien plus rapide
@@ -169,6 +170,7 @@ def _corners(session, clean, stats, good, bad):
         return
     length = session["track_length_m"]
     per_corner = {}
+    habits = []  # remarques de pilotage de chaque tour analysé
     for lap in others:
         trace = db.get_trace(lap["id"])
         if not trace:
@@ -176,8 +178,10 @@ def _corners(session, clean, stats, good, bad):
         result = analysis.compare(trace, best_trace, points=DEBRIEF_POINTS)
         for corner in analysis.corner_analysis(result, length):
             per_corner.setdefault(corner["number"], []).append(corner)
+        habits.append(technique.lap_report(result, session))
     if not per_corner:
         return
+    _habits(habits, good, bad)
 
     summary = []
     for number, items in per_corner.items():
@@ -450,3 +454,34 @@ def _progress_corners(car, track, sessions, early, recent, since, good, bad):
         bad.append(_remark(f"Virage {t['number']} stagne",
                            f"Toujours environ {_s(t['gap_now'])} s de plus que sur ton record, sans amélioration. "
                            "Un bon candidat pour le mode entraînement.", weight=t["gap_now"]))
+
+
+HABIT_SHARE = 0.4   # une erreur présente sur au moins 40 % des tours analysés devient une « habitude »
+
+
+def _habits(reports, good, bad):
+    """Erreurs de pilotage qui reviennent tour après tour (analyse de technique.py)."""
+    laps = len(reports)
+    if laps < 3:
+        return
+    counts, examples = {}, {}
+    for report in reports:
+        for r in {(r["corner"], r["code"]): r for r in report["remarks"]}.values():
+            key = (r["corner"], r["code"])
+            counts[key] = counts.get(key, 0) + 1
+            examples.setdefault(key, r)
+    habits = sorted(((n, key) for key, n in counts.items() if n >= max(2, HABIT_SHARE * laps)),
+                    key=lambda item: -item[0])  # la clé peut contenir None (erreur « sur tout le tour »)
+    for n, key in habits[:4]:
+        r = examples[key]
+        where = f"virage {r['corner']}" if r["corner"] else "sur tout le tour"
+        bad.append(_remark(f"Habitude · {r['topic'].lower()} ({where}) : {n} tours sur {laps}",
+                           f"{r['observation']} {r['action']}", weight=0.08 * r["severity"] * n / laps))
+    with_issues = {examples[key]["topic"] for key in counts}
+    missing = {m for report in reports for m in report["missing"]}
+    measurable = [t for t in technique.TOPICS
+                  if not (t == "Rapports" and "régime moteur" in missing) and not (t == "Volant" and "accélération latérale" in missing)]
+    clean_topics = [t for t in measurable if t not in with_issues]
+    if clean_topics:
+        good.append(_remark("Technique propre : " + ", ".join(t.lower() for t in clean_topics),
+                            "Aucune erreur de pilotage détectée dans ces domaines sur les tours analysés."))

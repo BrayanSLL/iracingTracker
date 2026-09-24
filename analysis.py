@@ -4,8 +4,9 @@ import statistics
 from bisect import bisect_left
 
 SECTOR_COUNT = 10
-CHANNELS = ("speed", "throttle", "brake", "gear", "steer")
-STEP_CHANNELS = {"gear"}  # pas d'interpolation linéaire pour le rapport engagé
+CHANNELS = ("speed", "throttle", "brake", "gear", "steer", "rpm", "lat", "lon", "abs", "clutch")
+# pas d'interpolation linéaire : rapport, ABS, et régime (sinon il serait « moyenné » au passage de rapport)
+STEP_CHANNELS = {"gear", "abs", "rpm"}
 MAX_POINTS = 6000
 
 

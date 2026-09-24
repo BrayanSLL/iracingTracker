@@ -329,3 +329,27 @@ table.laps { width: 100%; border-collapse: collapse; }
 .progress-debrief .good-list li { border-left-color: var(--good); }
 .progress-debrief .bad-list li { border-left-color: var(--gold); }
 @media (max-width: 800px) { .compare-heads { grid-template-columns: 1fr; } }
+
+/* --- rapport de l'ingénieur --------------------------------------------------------- */
+.engineer { margin-top: 1rem; }
+.profile-chips { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5rem; margin: .4rem 0 .75rem; }
+.profile-chip { background: var(--surface-2); border-radius: 6px; padding: .5rem .7rem; border-top: 3px solid var(--border); }
+.profile-chip.solide { border-top-color: var(--good); }
+.profile-chip.surveiller { border-top-color: var(--gold); }
+.profile-chip.travailler { border-top-color: var(--loss); }
+.profile-chip .pc-topic { font-weight: 600; }
+.profile-chip .pc-status { font-size: 12px; color: var(--text-secondary); }
+.engineer-list { display: flex; flex-direction: column; gap: .5rem; }
+.eng {
+    display: grid; grid-template-columns: auto 1fr; gap: .2rem .75rem; text-align: left; width: 100%;
+    background: var(--surface-2); border: 1px solid var(--border); border-left: 3px solid var(--gold);
+    border-radius: 6px; padding: .6rem .8rem; color: inherit; font: inherit; cursor: pointer;
+}
+.eng.sev-1 { border-left-color: var(--text-muted); }
+.eng:hover { border-color: var(--text-muted); }
+.eng .e-where { grid-row: span 3; font-weight: 700; white-space: nowrap; color: var(--text-secondary); }
+.eng .e-obs { font-weight: 600; }
+.eng .e-why { font-size: 13px; color: var(--text-secondary); }
+.eng .e-do { font-size: 13px; }
+.eng .e-do::before { content: "→ "; color: var(--series-1); font-weight: 700; }
+@media (max-width: 800px) { .profile-chips { grid-template-columns: repeat(2, minmax(0, 1fr)); } .eng { grid-template-columns: 1fr; } .eng .e-where { grid-row: auto; } }
