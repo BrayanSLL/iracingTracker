@@ -274,6 +274,74 @@ class HabitsTest(unittest.TestCase):
         self.assertIn("sur tout le tour", " ".join(r["title"] for r in bad))
 
 
+class RemarksTest(unittest.TestCase):
+    """Formulations variées, mémoire d'une session à l'autre, résumé radio."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        db.DB_PATH = Path(cls.tmp.name) / "sessions.db"
+        db.init_db()
+        db.set_setting("voice", "records")
+        cls.spoken = []
+        cls._say = telemetry.speaker.say
+        telemetry.speaker.say = cls.spoken.append
+        cls.sessions = []
+        for seed in (7, 7):  # deux sessions avec les mêmes défauts (même graine)
+            fake = FakeIRSDK(seed=seed)
+            recorder = telemetry.TelemetryRecorder(ir=fake, waiter=DemoWaiter(fake, 0))
+            drive(recorder, fake, 8 * 85)
+            fake.on_track = False  # retour au garage : résumé radio
+            drive(recorder, fake, 3)
+            cls.sessions.append(recorder.session_id)
+        cls.client = main.app.test_client()
+        main.recorder = recorder
+
+    @classmethod
+    def tearDownClass(cls):
+        telemetry.speaker.say = cls._say
+        cls.tmp.cleanup()
+
+    def test_phrasing_is_varied_but_stable(self):
+        rng_a, rng_b = technique.random.Random("tour-1"), technique.random.Random("tour-1")
+        self.assertEqual(technique._phrase("brake_attack", rng_a, attack="0,3", ref_txt=""),
+                         technique._phrase("brake_attack", rng_b, attack="0,3", ref_txt=""))
+        seen = {technique._phrase("brake_attack", technique.random.Random(f"tour-{i}"), attack="0,3", ref_txt="")[0]
+                for i in range(30)}
+        self.assertGreaterEqual(len(seen), 3)
+
+    def test_habits_remembered_across_sessions(self):
+        first, second = self.sessions
+        debrief.session_debrief(second)  # analyse aussi la session précédente si besoin
+        self.assertTrue(db.has_habit_run(first))
+        result = debrief.session_debrief(second)
+        details = " ".join(r["detail"] for r in result["bad"])
+        self.assertIn("2e session d'affilée", details)
+
+    def test_lap_report_mentions_history(self):
+        laps = [l for l in db.list_laps(self.sessions[1]) if l["lap_time"] and not l["flag"]]
+        best = min(laps, key=lambda l: l["lap_time"])
+        other = next(l for l in laps if l["id"] != best["id"])
+        data = self.client.get(f"/api/compare?lap={other['id']}&ref={best['id']}").get_json()
+        engineer = data["engineer"]
+        self.assertIn("improved", engineer)
+        self.assertTrue(all("history" in r for r in engineer["remarks"]))
+
+    def test_radio_summary(self):
+        text = debrief.radio_summary(self.sessions[0])
+        self.assertTrue(text.startswith("Fin de relais. Meilleur tour 1 2"), text)
+        self.assertNotIn("±", text)
+        self.assertTrue(any(t.startswith("Fin de relais") for t in self.spoken), self.spoken)
+        res = self.client.post(f"/api/sessions/{self.sessions[0]}/radio").get_json()
+        self.assertEqual(res["text"], text)
+
+    def test_speakable(self):
+        self.assertEqual(debrief.speakable("Rythme irrégulier : ± 0,952 s"), "Rythme irrégulier : plus ou moins 0,952 secondes")
+        self.assertEqual(debrief.speakable("Secteur S5 irrégulier"), "Secteur 5 irrégulier")
+        self.assertEqual(debrief.speakable("Ta régularité en S5 stagne"), "Ta régularité en secteur 5 stagne")
+        self.assertEqual(debrief.speakable("Virage 3 : −0,26 s par tour"), "Virage 3 : moins 0,26 secondes par tour")
+
+
 class DebriefTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

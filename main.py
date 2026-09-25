@@ -22,6 +22,7 @@ import db
 import debrief
 import objectives
 import technique
+from voice import speaker
 from telemetry import TelemetryRecorder
 
 app = Flask(__name__)
@@ -64,6 +65,15 @@ def session_debrief(session_id):
     return jsonify(debrief.session_debrief(session_id))
 
 
+@app.post("/api/sessions/<int:session_id>/radio")
+def session_radio(session_id):
+    """Résumé radio de la session, lu à voix haute (même si les annonces automatiques sont coupées)."""
+    text = debrief.radio_summary(session_id)
+    if text:
+        speaker.say(text)
+    return jsonify({"text": text})
+
+
 @app.delete("/api/sessions/<int:session_id>")
 def delete_session(session_id):
     current = recorder.status()
@@ -103,7 +113,7 @@ def compare():
     result["lap_meta"] = lap
     result["ref_meta"] = ref if ref_trace else None
     result["corners"] = analysis.corner_analysis(result, lap["track_length_m"])
-    result["engineer"] = technique.lap_report(result, lap)
+    result["engineer"] = debrief.annotate_history(technique.lap_report(result, lap), lap)
     result["map"] = analysis.track_map(ref_trace or lap_trace, result["d"])
     if result["map"] is None and ref_trace:
         result["map"] = analysis.track_map(lap_trace, result["d"])

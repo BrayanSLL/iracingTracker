@@ -772,6 +772,7 @@ function renderEngineer(data) {
         <div class="pc-topic">${p.topic}</div>
         <div class="pc-status">${p.status}${p.count ? ` · ${p.count} remarque${p.count > 1 ? 's' : ''}` : ''}</div>
     </div>`).join('');
+    $('engineer-improved').innerHTML = (report.improved || []).map(t => `<li>${escapeHtml(t)}</li>`).join('');
     const missing = report.missing.length
         ? `<div class="muted small-text">Tour enregistré sans ${report.missing.join(', ')} : une partie de l'analyse n'est pas possible.</div>` : '';
     $('engineer-remarks').innerHTML = (report.remarks.length ? report.remarks.map(r => {
@@ -781,6 +782,7 @@ function renderEngineer(data) {
             <span class="e-obs">${escapeHtml(r.observation)}</span>
             <span class="e-why">${escapeHtml(r.consequence)}</span>
             <span class="e-do">${escapeHtml(r.action)}</span>
+            ${r.history ? `<span class="e-hist">↻ ${escapeHtml(r.history)}</span>` : ''}
         </button>`;
     }).join('') : '<div class="empty small">Rien à redire sur ce tour 👌</div>') + missing;
 }
@@ -791,4 +793,14 @@ $('engineer-remarks').addEventListener('click', e => {
     const margin = trackLength() ? 60 : 1.5;
     teleCharts[0].setScale('x', { min: Number(el.dataset.start) - margin, max: Number(el.dataset.end) + margin });
     $('tele-charts').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+// --- résumé radio ---------------------------------------------------------------------------
+
+$('radio-btn').addEventListener('click', async () => {
+    if (!state.sessionId) return;
+    const res = await api(`/api/sessions/${state.sessionId}/radio`, { method: 'POST' });
+    $('radio-text').hidden = !res.text;
+    $('radio-text').textContent = res.text ? `« ${res.text} »` : '';
+    if (!res.text) alert('Pas encore assez de tours propres pour un résumé (3 minimum).');
 });

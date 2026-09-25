@@ -5,6 +5,7 @@ import time
 
 import analysis
 import db
+import debrief
 import objectives
 from voice import speaker, spoken_delta, spoken_time
 
@@ -80,6 +81,8 @@ class TelemetryRecorder:
 
     def _reset_lap_tracking(self):
         self.session_num = None
+        self.was_on_track = False
+        self.stint_clean_laps = 0  # tours propres depuis la dernière sortie des stands (pour le résumé radio)
         self.last_tick = None
         self.last_lap_completed = None
         self.prev_last_lap_time = None
@@ -272,6 +275,11 @@ class TelemetryRecorder:
                     self._save_lap(self.pending, last_lap_time)
                     self.pending = None
 
+            # Retour au garage après un relais : l'ingénieur fait son résumé à la radio.
+            if self.was_on_track and not on_track:
+                self._radio_summary()
+            self.was_on_track = on_track
+
             # 2. Au garage / dans les menus / en replay : rien à compter.
             if not on_track:
                 self.last_lap_completed = None
@@ -363,7 +371,24 @@ class TelemetryRecorder:
             print(f"[objectifs] erreur : {exc!r}")
         self._announce_lap(lap_time, lap["flag"], previous_record, unlocked)
 
+    def _radio_summary(self):
+        if self.stint_clean_laps < 3 or db.get_setting("voice") == "off" or not self.session_id:
+            return
+        self.stint_clean_laps = 0
+        session_id = self.session_id
+
+        def speak():  # le débrief peut prendre une seconde : on ne bloque pas la capture
+            try:
+                text = debrief.radio_summary(session_id)
+                if text:
+                    speaker.say(text)
+            except Exception as exc:
+                print(f"[voix] résumé radio impossible : {exc!r}")
+        threading.Thread(target=speak, daemon=True, name="radio").start()
+
     def _announce_lap(self, lap_time, flag, previous_record, unlocked):
+        if lap_time is not None and flag is None:
+            self.stint_clean_laps += 1
         mode = db.get_setting("voice")
         if mode == "off" or lap_time is None or flag is not None:
             return

@@ -58,6 +58,18 @@ CREATE TABLE IF NOT EXISTS objectives (
     completed_at TEXT,                -- NULL tant que l'objectif n'est pas réussi
     UNIQUE (car, track, code)
 );
+-- Habitudes de pilotage de chaque session (pour dire « 3e session d'affilée » ou « corrigé »)
+CREATE TABLE IF NOT EXISTS habit_runs (
+    session_id INTEGER PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    laps INTEGER NOT NULL,            -- tours analysés
+    computed_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS session_habits (
+    session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    corner INTEGER,                   -- NULL = erreur sur tout le tour (passages de rapport…)
+    code TEXT NOT NULL,               -- type d'erreur (technique.py)
+    count INTEGER NOT NULL            -- nombre de tours où elle apparaît
+);
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
@@ -311,3 +323,40 @@ def get_setting(key):
 def set_setting(key, value):
     execute("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (key, value))
+
+
+# --- habitudes de pilotage ----------------------------------------------------------------
+
+def save_habits(session_id, laps_analysed, habits):
+    """habits = [(virage ou None, code, nombre de tours)]"""
+    conn = connect()
+    try:
+        with conn:
+            conn.execute("DELETE FROM session_habits WHERE session_id = ?", (session_id,))
+            conn.executemany("INSERT INTO session_habits (session_id, corner, code, count) VALUES (?, ?, ?, ?)",
+                             [(session_id, corner, code, count) for corner, code, count in habits])
+            conn.execute("INSERT INTO habit_runs (session_id, laps, computed_at) VALUES (?, ?, ?) "
+                         "ON CONFLICT(session_id) DO UPDATE SET laps = excluded.laps, computed_at = excluded.computed_at",
+                         (session_id, laps_analysed, now()))
+    finally:
+        conn.close()
+
+
+def previous_sessions(session, limit=5, analysed_only=True):
+    """Sessions précédentes sur le même couple voiture × circuit, de la plus récente à la plus ancienne."""
+    join = "JOIN habit_runs r ON r.session_id = s.id" if analysed_only else ""
+    return query(f"""
+        SELECT s.* FROM sessions s {join}
+        WHERE s.car IS ? AND s.track IS ? AND s.id != ? AND (s.started_at < ? OR (s.started_at = ? AND s.id < ?))
+        ORDER BY s.started_at DESC, s.id DESC LIMIT ?
+    """, (session["car"], session["track"], session["id"], session["started_at"], session["started_at"],
+          session["id"], limit))
+
+
+def habits_of(session_id):
+    return {(r["corner"], r["code"]): r["count"]
+            for r in query("SELECT corner, code, count FROM session_habits WHERE session_id = ?", (session_id,))}
+
+
+def has_habit_run(session_id):
+    return query_one("SELECT 1 AS ok FROM habit_runs WHERE session_id = ?", (session_id,)) is not None

@@ -59,6 +59,17 @@ Un **profil de pilotage** résume le tour (Freinage / Accélération / Rapports 
 tes **habitudes**, c'est-à-dire les erreurs qui reviennent sur au moins 40 % des tours
 (« Habitude · freinage (virage 2) : 6 tours sur 15 »).
 
+Pour que le rapport sonne moins « machine » :
+- **Des formulations variées :** chaque type de remarque a plusieurs formulations (102 phrases au total). Le
+  choix est stable pour un même tour : le rapport ne change pas quand tu le rouvres.
+- **La mémoire des sessions précédentes :** les habitudes de chaque session sont enregistrées. Une remarque qui
+  revient est signalée (« ↻ Déjà relevé lors de tes 2 dernières sessions : c'est une habitude à casser »,
+  « C'est la 3e session d'affilée avec ce défaut »). Ce qui a disparu est salué (« Corrigé : freinage timide au
+  virage 2 »).
+- **Le résumé radio :** quand tu rentres au garage après au moins 3 tours propres, la voix fait un bilan en 2 ou
+  3 phrases (« Fin de relais. Meilleur tour 1 22 5. Point positif : très régulier. Pour la suite : virage 1,
+  0,17 secondes perdues par tour. »). Le bouton « 🔊 Résumé radio » du débrief le rejoue à tout moment.
+
 Les graphiques de télémétrie affichent maintenant aussi le régime moteur (avec le régime de passage conseillé)
 et l'accélération latérale. Tous les seuils sont regroupés en haut de `technique.py`. Ils dépendent de la
 voiture, donc ajuste-les après tes premières vraies sessions. Les tours enregistrés avant cette version n'ont

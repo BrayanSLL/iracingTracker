@@ -88,7 +88,11 @@
             </section>
 
             <section class="panel debrief" id="debrief-panel">
-                <div class="panel-title">Débrief de la session</div>
+                <div class="panel-title-row">
+                    <div class="panel-title">Débrief de la session</div>
+                    <button class="btn" type="button" id="radio-btn">🔊 Résumé radio</button>
+                </div>
+                <div class="radio-text muted" id="radio-text" hidden></div>
                 <div class="debrief-priority" id="debrief-priority" hidden></div>
                 <div class="debrief-grid" id="debrief-grid">
                     <div>
@@ -137,6 +141,7 @@
                 <div class="engineer" id="engineer" hidden>
                     <div class="tele-title">Rapport de l'ingénieur <span class="muted" id="engineer-sub"></span></div>
                     <div class="profile-chips" id="engineer-profile"></div>
+                    <ul class="improved" id="engineer-improved"></ul>
                     <div class="engineer-list" id="engineer-remarks"></div>
                 </div>
                 <div class="analysis-grid">

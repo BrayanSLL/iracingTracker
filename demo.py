@@ -73,6 +73,7 @@ class FakeIRSDK:
         self.abs_active = False
         self.brake_timer = 0.0
         self.pit_road = True
+        self.on_track = True  # passer à False simule un retour au garage
         self._new_lap_profile()
 
     def _new_lap_profile(self):
@@ -120,7 +121,7 @@ class FakeIRSDK:
             "SessionTick": self.tick,
             "SessionNum": 0,
             "SessionTime": self.session_time,
-            "IsOnTrack": True,
+            "IsOnTrack": self.on_track,
             "OnPitRoad": self.pit_road,
             "Lap": self.lap,
             "LapCompleted": self.lap_completed,

@@ -4,11 +4,13 @@ Tout est calculé à partir des temps au tour, des secteurs et de la télémétr
 Les remarques « à améliorer » ont un poids (≈ temps gagnable par tour, en secondes) qui sert
 à choisir la priorité pour la prochaine session.
 """
+import re
 import statistics
 
 import analysis
 import db
 import technique
+from voice import spoken_time
 
 MAX_LAPS_ANALYSED = 15      # tours comparés virage par virage (les plus récents)
 DEBRIEF_POINTS = 2000       # grille plus grossière que l'affichage : suffisant et bien plus rapide
@@ -39,7 +41,7 @@ def session_debrief(session_id):
     return _cache[key]
 
 
-def _build(session_id, laps):
+def _build(session_id, laps, with_history=True):
     session = db.query_one("SELECT * FROM sessions WHERE id = ?", (session_id,))
     stats = analysis.session_stats(laps)
     clean = [l for l in laps if l["flag"] is None and l["lap_time"] is not None]
@@ -55,7 +57,7 @@ def _build(session_id, laps):
     _sectors(clean, good, bad)
     _trend(clean, good, bad)
     _validity(laps, clean, good, bad)
-    _corners(session, clean, stats, good, bad)
+    _corners(session, clean, stats, good, bad, with_history)
 
     priority = max(bad, key=lambda r: r["weight"]) if bad else None
     if priority and priority["weight"] <= 0:
@@ -162,7 +164,7 @@ def _validity(laps, clean, good, bad):
 
 # --- règles sur la télémétrie des virages ----------------------------------------------------
 
-def _corners(session, clean, stats, good, bad):
+def _corners(session, clean, stats, good, bad, with_history=True):
     best_id = stats["best_lap_id"]
     best_trace = db.get_trace(best_id) if best_id else None
     others = [l for l in clean if l["id"] != best_id and l["has_trace"]][-MAX_LAPS_ANALYSED:]
@@ -181,7 +183,7 @@ def _corners(session, clean, stats, good, bad):
         habits.append(technique.lap_report(result, session))
     if not per_corner:
         return
-    _habits(habits, good, bad)
+    _habits(habits, good, bad, session, with_history)
 
     summary = []
     for number, items in per_corner.items():
@@ -200,7 +202,7 @@ def _corners(session, clean, stats, good, bad):
     for corner in sorted(summary, key=lambda c: -c["loss"])[:2]:
         if corner["loss"] >= 0.08:
             tips = analysis._advice(corner["avg"], corner["ref"], unit)
-            bad.append(_remark(f"Virage {corner['number']} : −{_s(corner['loss'])} s par tour",
+            bad.append(_remark(f"Virage {corner['number']} : {_s(corner['loss'])} s perdues par tour",
                                "En moyenne par rapport à ton meilleur tour. "
                                + ("Le plus souvent : " + ", ".join(t[0].lower() + t[1:] for t in tips) + "."
                                   if tips else "Regarde ce virage dans la télémétrie."),
@@ -459,8 +461,12 @@ def _progress_corners(car, track, sessions, early, recent, since, good, bad):
 HABIT_SHARE = 0.4   # une erreur présente sur au moins 40 % des tours analysés devient une « habitude »
 
 
-def _habits(reports, good, bad):
-    """Erreurs de pilotage qui reviennent tour après tour (analyse de technique.py)."""
+def _habits(reports, good, bad, session=None, with_history=True):
+    """Erreurs de pilotage qui reviennent tour après tour (analyse de technique.py).
+
+    Les habitudes sont enregistrées pour chaque session : on peut ainsi dire qu'un défaut revient
+    session après session, ou au contraire qu'il a été corrigé depuis la dernière fois.
+    """
     laps = len(reports)
     if laps < 3:
         return
@@ -472,11 +478,25 @@ def _habits(reports, good, bad):
             examples.setdefault(key, r)
     habits = sorted(((n, key) for key, n in counts.items() if n >= max(2, HABIT_SHARE * laps)),
                     key=lambda item: -item[0])  # la clé peut contenir None (erreur « sur tout le tour »)
+    history = _history(session, with_history) if session else []
     for n, key in habits[:4]:
         r = examples[key]
         where = f"virage {r['corner']}" if r["corner"] else "sur tout le tour"
+        streak = _streak(history, key)
+        again = f" C'est la {streak + 1}e session d'affilée avec ce défaut." if streak else ""
         bad.append(_remark(f"Habitude · {r['topic'].lower()} ({where}) : {n} tours sur {laps}",
-                           f"{r['observation']} {r['action']}", weight=0.08 * r["severity"] * n / laps))
+                           f"{r['observation']} {r['action']}{again}",
+                           weight=0.08 * r["severity"] * n / laps * (1 + 0.5 * streak)))
+    if history:
+        last_date, last_habits = history[0]
+        for (corner, code), count in last_habits.items():
+            if counts.get((corner, code), 0) <= 0.15 * laps:  # (quasi) disparu sur cette session
+                where = f"au virage {corner}" if corner else "sur le tour"
+                good.append(_remark(f"Corrigé : {technique.LABELS.get(code, code)} {where}",
+                                    f"C'était une habitude lors de ta session du {_date(last_date)}. "
+                                    "Bien joué, garde cette façon de faire."))
+    if session:
+        db.save_habits(session["id"], laps, [(corner, code, n) for n, (corner, code) in habits])
     with_issues = {examples[key]["topic"] for key in counts}
     missing = {m for report in reports for m in report["missing"]}
     measurable = [t for t in technique.TOPICS
@@ -485,3 +505,76 @@ def _habits(reports, good, bad):
     if clean_topics:
         good.append(_remark("Technique propre : " + ", ".join(t.lower() for t in clean_topics),
                             "Aucune erreur de pilotage détectée dans ces domaines sur les tours analysés."))
+
+
+
+def _history(session, compute_missing=True):
+    """[(date, habitudes)] des sessions précédentes, la plus récente d'abord.
+
+    Si la session juste avant n'a jamais été analysée, on l'analyse maintenant (sans remonter plus loin).
+    """
+    if compute_missing:
+        previous = db.previous_sessions(session, limit=1, analysed_only=False)
+        if previous and not db.has_habit_run(previous[0]["id"]):
+            _build(previous[0]["id"], db.list_laps(previous[0]["id"]), with_history=False)
+    return [(s["started_at"], db.habits_of(s["id"])) for s in db.previous_sessions(session)]
+
+
+def _streak(history, key):
+    """Nombre de sessions précédentes consécutives où la même habitude était déjà présente."""
+    streak = 0
+    for _, habits in history:
+        if key not in habits:
+            break
+        streak += 1
+    return streak
+
+
+def annotate_history(report, lap_meta):
+    """Ajoute au rapport d'un tour ce qui revient des sessions précédentes, et ce qui a été corrigé."""
+    session = db.query_one("SELECT * FROM sessions WHERE id = ?", (lap_meta["session_id"],))
+    history = [(s["started_at"], db.habits_of(s["id"])) for s in db.previous_sessions(session)] if session else []
+    for r in report["remarks"]:
+        streak = _streak(history, (r["corner"], r["code"]))
+        r["history"] = (f"Déjà relevé lors de ta dernière session." if streak == 1 else
+                        f"Déjà relevé lors de tes {streak} dernières sessions : c'est une habitude à casser."
+                        if streak > 1 else None)
+    report["improved"] = []
+    if history:
+        present = {(r["corner"], r["code"]) for r in report["remarks"]}
+        last_date, last_habits = history[0]
+        for (corner, code) in last_habits:
+            if (corner, code) not in present:
+                where = f"au virage {corner}" if corner else "sur le tour"
+                report["improved"].append(f"Corrigé sur ce tour : {technique.LABELS.get(code, code)} {where} "
+                                          f"(c'était une habitude lors de ta session du {_date(last_date)}).")
+    return report
+
+
+# --- résumé radio (lu par la voix) ----------------------------------------------------------
+
+def speakable(text):
+    """Rend un titre de remarque agréable à entendre avec la synthèse vocale."""
+    text = text.replace("±", "plus ou moins").replace("−", "moins ").replace(" · ", ", ").replace("tr/min", "tours minute")
+    text = re.sub(r"(?i)\b(secteur )?S(\d+)\b", lambda m: f"{m.group(1) or 'secteur '}{m.group(2)}", text)
+    text = re.sub(r"(\d) s\b", r"\1 secondes", text)
+    text = re.sub(r"\+(\d)", r"plus \1", text)
+    return text
+
+
+def radio_summary(session_id):
+    """2 ou 3 phrases, comme un ingénieur à la radio : meilleur tour, un point fort, la priorité."""
+    result = session_debrief(session_id)
+    if not result["ready"]:
+        return None
+    stats = analysis.session_stats(db.list_laps(session_id))
+    parts = [f"Fin de relais. Meilleur tour {spoken_time(stats['best_lap'])}."]
+    strengths = [r for r in result["good"] if not r["title"].startswith("Première référence")]
+    record = next((r for r in strengths if r["title"].startswith("Nouveau record")), None)
+    if record or strengths:
+        parts.append(f"Point positif : {speakable((record or strengths[0])['title'])}.")
+    if result["priority"]:
+        parts.append(f"Pour la suite : {speakable(result['priority']['title'])}.")
+    elif not result["bad"]:
+        parts.append("Rien à redire, continue comme ça.")
+    return " ".join(parts)
