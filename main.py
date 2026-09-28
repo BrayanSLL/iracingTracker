@@ -200,11 +200,33 @@ def get_settings():
 @app.put("/api/settings")
 def put_settings():
     data = request.get_json(silent=True) or {}
-    if "voice" in data:
-        if data["voice"] not in ("off", "records", "laps"):
+    allowed = {"voice": ("off", "records", "laps"), "voice_rate": ("lent", "normal", "rapide"), "overlay": ("on", "off")}
+    for key, values in allowed.items():
+        if key in data:
+            if data[key] not in values:
+                abort(400)
+            db.set_setting(key, data[key])
+    if "voice_volume" in data:
+        try:
+            volume = int(data["voice_volume"])
+        except (TypeError, ValueError):
             abort(400)
-        db.set_setting("voice", data["voice"])
+        if not 0 <= volume <= 100:
+            abort(400)
+        db.set_setting("voice_volume", str(volume))
+    apply_voice_settings()
     return get_settings()
+
+
+def apply_voice_settings():
+    speaker.configure(rate=db.get_setting("voice_rate"), volume=db.get_setting("voice_volume"))
+
+
+@app.post("/api/voice-test")
+def voice_test():
+    """Phrase de test, pour régler le volume et le débit de la voix."""
+    speaker.say("Radio check. Meilleur tour 1 22 4, moins 0 virgule 3. Tu m'entends bien ?")
+    return "", 204
 
 
 @app.post("/api/training")
@@ -308,6 +330,7 @@ def main():
 
     db.init_db()
     objectives.evaluate_all()  # rattrape les objectifs des sessions déjà enregistrées
+    apply_voice_settings()
     if args.demo:
         from demo import DemoWaiter, FakeIRSDK
         fake = FakeIRSDK()
@@ -330,7 +353,8 @@ def main():
 
     web = threading.Thread(target=server.serve_forever, daemon=True, name="web")
     web.start()
-    if not open_window(url, overlay=not args.no_overlay):
+    overlay = not args.no_overlay and db.get_setting("overlay") != "off"
+    if not open_window(url, overlay=overlay):
         while web.is_alive():  # mode navigateur : on garde le serveur actif (Ctrl+C pour quitter)
             web.join(0.5)
 

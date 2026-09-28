@@ -14,9 +14,17 @@ Add-Type -AssemblyName System.Speech
 $s = New-Object System.Speech.Synthesis.SpeechSynthesizer
 $fr = $s.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.Name -like 'fr*' } | Select-Object -First 1
 if ($fr) { $s.SelectVoice($fr.VoiceInfo.Name) }
-$s.Rate = 1
-while (($line = [Console]::In.ReadLine()) -ne $null) { if ($line) { $s.Speak($line) } }
+$s.Rate = 0
+$s.Volume = 100
+while (($line = [Console]::In.ReadLine()) -ne $null) {
+    if ($line.StartsWith('#RATE ')) { $s.Rate = [int]$line.Substring(6) }
+    elseif ($line.StartsWith('#VOLUME ')) { $s.Volume = [int]$line.Substring(8) }
+    elseif ($line) { $s.Speak($line) }
+}
 """
+
+# débit de parole : de -10 (très lent) à 10 (très rapide) pour la synthèse vocale de Windows
+RATES = {"lent": -2, "normal": 0, "rapide": 2}
 
 
 class Speaker:
@@ -24,7 +32,16 @@ class Speaker:
         self.queue = queue.Queue(maxsize=5)  # si ça s'accumule, on jette plutôt que parler en retard
         self.process = None
         self.history = []  # dernières annonces (affichées dans l'interface)
+        self.rate, self.volume = 0, 100
         threading.Thread(target=self._run, daemon=True, name="voice").start()
+
+    def configure(self, rate=None, volume=None):
+        """Débit (« lent », « normal », « rapide ») et volume (0 à 100) de la voix."""
+        if rate is not None:
+            self.rate = RATES.get(rate, 0)
+        if volume is not None:
+            self.volume = max(0, min(100, int(volume)))
+        self._send_settings = True
 
     def say(self, text):
         self.history = (self.history + [text])[-20:]
@@ -50,10 +67,14 @@ class Speaker:
             text = self.queue.get()
             if self.process is None or self.process.poll() is not None:
                 self.process = self._start()
+                self._send_settings = True  # nouveau processus : il faut lui redonner les réglages
             if self.process is None:
                 print(f"[voix] {text}")
                 continue
             try:
+                if getattr(self, "_send_settings", False):
+                    self.process.stdin.write(f"#RATE {self.rate}\n#VOLUME {self.volume}\n".encode("utf-8"))
+                    self._send_settings = False
                 self.process.stdin.write((text.replace("\n", " ") + "\n").encode("utf-8"))
                 self.process.stdin.flush()
             except OSError:

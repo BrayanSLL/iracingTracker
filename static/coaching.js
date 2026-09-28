@@ -4,12 +4,26 @@
 
 // --- annonces vocales ---------------------------------------------------------------------
 
-api('/api/settings').then(s => { $('voice-mode').value = s.voice; }).catch(console.error);
-$('voice-mode').addEventListener('change', e => {
-    api('/api/settings', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ voice: e.target.value }),
+function saveSetting(values) {
+    return api('/api/settings', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values),
     }).catch(err => alert(err.message));
-});
+}
+
+api('/api/settings').then(s => {
+    $('voice-mode').value = s.voice;
+    $('voice-rate').value = s.voice_rate;
+    $('voice-volume').value = s.voice_volume;
+    $('volume-value').textContent = s.voice_volume;
+    $('overlay-enabled').checked = s.overlay !== 'off';
+}).catch(console.error);
+
+$('voice-mode').addEventListener('change', e => saveSetting({ voice: e.target.value }));
+$('voice-rate').addEventListener('change', e => saveSetting({ voice_rate: e.target.value }));
+$('voice-volume').addEventListener('input', e => { $('volume-value').textContent = e.target.value; });
+$('voice-volume').addEventListener('change', e => saveSetting({ voice_volume: Number(e.target.value) }));
+$('overlay-enabled').addEventListener('change', e => saveSetting({ overlay: e.target.checked ? 'on' : 'off' }));
+$('voice-test').addEventListener('click', () => api('/api/voice-test', { method: 'POST' }).catch(console.error));
 
 // --- mode entraînement --------------------------------------------------------------------
 
