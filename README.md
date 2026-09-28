@@ -12,6 +12,11 @@ par session, et tu supprimes ce que tu veux depuis l'interface. 🏁
 > **Windows uniquement pour la capture** : iRacing ne tourne que sous Windows, et ses données ne sont
 > lisibles que depuis la même machine. Le mode démo, lui, fonctionne partout.
 
+> **Statut : en développement actif.** Testé en conditions réelles sur iRacing : capture des tours, temps
+> au tour, carte du circuit, voix, overlay et fenêtre de l'application fonctionnent. Les seuils de l'analyse
+> de pilotage ont été réglés sur un petit nombre de sessions et peuvent être trop sévères ou trop gentils
+> selon la voiture. Les retours et contributions sont les bienvenus : voir [Contribuer](#contribuer).
+
 ---
 
 ## Fonctionnalités
@@ -95,7 +100,8 @@ pas le régime, les G ni l'ABS : leur analyse est partielle, et l'interface le s
   elle est présente). Choix dans la barre du haut :
   *Voix coupée*, *Records seulement* (« Record battu ! 1 22 4, moins 0 virgule 3 ») ou *Chaque tour*
   (« 1 22 8, plus 0 virgule 4 », « Objectif réussi »). En mode entraînement, chaque passage est annoncé
-  (« Virage 3, moins 4 centièmes »), sauf si la voix est coupée.
+  (« Virage 3, moins 4 centièmes »), sauf si la voix est coupée. Le panneau ⚙ règle le volume et le débit
+  de la voix, avec un bouton « Tester la voix ».
 
 ![Comparaison de deux sessions](docs/comparaison.png)
 
@@ -126,7 +132,8 @@ pas le régime, les G ni l'ABS : leur analyse est partielle, et l'interface le s
 - **Overlay du delta** : une petite fenêtre toujours au premier plan, sans bordure et déplaçable à la souris.
   Elle affiche en direct ton écart avec ton record au même endroit de la piste, le temps prévu du tour et
   ton record. Pour qu'elle s'affiche par-dessus le jeu, lance iRacing en mode **fenêtré sans bordure**
-  (borderless) : aucune fenêtre ne peut passer devant un jeu en plein écran exclusif.
+  (borderless) : aucune fenêtre ne peut passer devant un jeu en plein écran exclusif. Tu peux la désactiver
+  dans le panneau ⚙.
 
 ![Overlay du delta en direct](docs/overlay.png)
 
@@ -159,6 +166,9 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+Dans Git Bash, l'activation se fait avec `source venv/Scripts/activate`, et l'installation avec
+`python -m pip install -r requirements.txt`.
+
 Dépendances : `flask` (serveur local), `pyirsdk` (lecture d'iRacing), `pywebview` (fenêtre de l'application).
 
 ## Lancer l'application
@@ -177,7 +187,7 @@ L'application peut rester ouverte en permanence, elle se reconnecte toute seule 
 | `--demo-speed 10` | Démo accélérée (10× plus rapide) |
 | `--browser` | Ouvre l'interface dans le navigateur au lieu d'une fenêtre |
 | `--no-gui` | Serveur seul, interface à ouvrir à la main sur `http://127.0.0.1:5000` |
-| `--no-overlay` | N'ouvre pas la fenêtre du delta en direct (elle reste accessible sur `http://127.0.0.1:5000/overlay`) |
+| `--no-overlay` | N'ouvre pas la fenêtre du delta en direct pour ce lancement. Pour la désactiver durablement : ⚙ → « Fenêtre du delta en direct ». Elle reste accessible sur `http://127.0.0.1:5000/overlay`. |
 | `--port 5001` | Change le port local |
 
 Pour essayer tout de suite : `python main.py --demo --demo-speed 10`
@@ -247,7 +257,8 @@ Windows, mise à jour 60 fois par seconde, et signale chaque mise à jour par un
 | `cars`, `car_tracks` | voitures et couples voiture × circuit connus |
 | `objectives` | objectifs répliqués pour chaque voiture et circuit : valeur actuelle, date de réussite, XP |
 | `xp_events` | historique de l'XP gagnée |
-| `settings` | réglages (annonces vocales) |
+| `habit_runs`, `session_habits` | habitudes de pilotage de chaque session (pour le suivi d'une session à l'autre) |
+| `settings` | réglages (annonces vocales, volume, débit, overlay) |
 
 Le dossier `data/` est ignoré par git : tes sessions restent sur ta machine.
 
@@ -304,13 +315,43 @@ Un tour gêné par le trafic fausse aussi la comparaison.
 - Les **températures et l'usure des pneus** ne sont mises à jour **qu'aux stands**. La température des freins et les dégâts ne sont pas disponibles.
 - Pour les autres pilotes, seuls les temps et positions des voitures de ta session sont accessibles, pas leur télémétrie.
 
-## Idées pour la suite
+## Feuille de route
 
-1. Objectifs de pilotage tirés de l'analyse des virages (« aucun virage avec plus de 0,5 s de roue libre »…)
-2. Défis de la semaine avec bonus d'XP
-3. Incidents (`PlayerCarMyIncidentCount`) : objectifs « tours sans incident »
-4. Stratégie carburant en course : tours restants et quantité à remettre
-5. Import des fichiers `.ibt` enregistrés par iRacing
+Idées ouvertes aux contributions. Si l'une d'elles t'intéresse, ouvre d'abord une issue pour en discuter.
+
+1. **Import des fichiers `.ibt`** enregistrés par iRacing : anciennes sessions, tours d'autres pilotes comme
+   référence, coordonnées GPS exactes pour la carte
+2. **Fantôme et autres voitures :** voir ce que le SDK expose (`CarIdx…`) et s'en servir comme référence partielle
+3. **Objectifs de pilotage** tirés de l'analyse des virages (« aucun virage avec plus de 0,5 s de roue libre »…)
+4. **Défis de la semaine** avec bonus d'XP
+5. **Incidents** (`PlayerCarMyIncidentCount`) : dans le débrief et en objectifs « tours sans incident »
+6. **Stratégie carburant** en course : tours restants et quantité à remettre
+7. **Seuils par catégorie de voiture** (MX-5, GT3, formule…) pour l'analyse de pilotage
+8. **Traduction** de l'interface (l'application est aujourd'hui en français)
+9. **Lancement en un clic** (exécutable avec PyInstaller, raccourci sur le Bureau)
+
+---
+
+## Contribuer
+
+Les contributions sont les bienvenues : rapports de bugs, idées, corrections et nouvelles fonctionnalités.
+
+- **Un bug ?** Ouvre une [issue](../../issues/new/choose) avec le modèle « Bug ». Précise la voiture, le circuit,
+  le type de session et, si possible, ce qu'affiche la console.
+- **Une idée ?** Ouvre une issue avec le modèle « Idée de fonctionnalité » avant de coder, pour en discuter.
+- **Du code ?** Lis [CONTRIBUTING.md](CONTRIBUTING.md) : installation, mode démo, tests, organisation du
+  code et conventions.
+
+Pas besoin d'iRacing pour contribuer : le mode démo (`python main.py --demo`) simule une voiture complète, et
+les tests automatiques tournent sur n'importe quel système.
+
+## Licence
+
+[MIT](LICENSE) : tu peux utiliser, modifier et redistribuer ce code librement, à condition de conserver la mention
+de copyright. La bibliothèque de graphiques [uPlot](https://github.com/leeoniya/uPlot), incluse dans
+`static/vendor/`, est elle aussi sous licence MIT.
+
+Ce projet n'est ni affilié à iRacing.com Motorsport Simulations, ni soutenu par cette société.
 
 ---
 
@@ -323,9 +364,10 @@ Un tour gêné par le trafic fausse aussi la comparaison.
 | Le premier tour est marqué « stand » | Normal : c'est l'out-lap. |
 | La fenêtre ne s'ouvre pas | L'application ouvre alors le navigateur. Tu peux aussi utiliser `python main.py --browser`. Sur Windows, pywebview a besoin de Microsoft Edge WebView2, déjà installé sur Windows 10 et 11 à jour. |
 | `ModuleNotFoundError` | Active l'environnement virtuel (`venv\Scripts\activate`), puis relance `pip install -r requirements.txt`. |
-| Pas de voix | Vérifie le réglage 🔊 dans la barre du haut et le volume de Windows. Sans voix française installée (Paramètres Windows → Heure et langue → Voix), Windows lit avec sa voix par défaut. |
+| Pas de voix | Vérifie le réglage 🔊 dans la barre du haut, puis ⚙ → « Tester la voix ». Sans voix française installée (Paramètres Windows → Heure et langue → Voix), Windows lit avec sa voix par défaut. |
+| La voix est couverte par le jeu | Elle est déjà au maximum de la synthèse vocale de Windows. Dans le **mélangeur de volume** de Windows (clic droit sur l'icône du son), monte « Windows PowerShell » et baisse iRacing, ou baisse le volume général dans les options audio d'iRacing. Le débit « Lent » (⚙) rend aussi la voix plus compréhensible. |
 | L'overlay n'apparaît pas par-dessus le jeu | Passe iRacing en mode fenêtré sans bordure (Options → Graphismes). |
-| La carte du circuit est inversée (en miroir) | Le sens de `YawNorth` n'a pas pu être vérifié sans iRacing. Signale-le : c'est une ligne à changer dans `analysis.track_map`. |
+| Je n'utilise pas l'overlay | ⚙ → décoche « Fenêtre du delta en direct » : il ne s'ouvrira plus au prochain lancement. |
 | Port 5000 déjà utilisé | `python main.py --port 5001` |
 
 ## Ressources

@@ -201,6 +201,13 @@ class CoachingTest(unittest.TestCase):
         self.assertEqual(self.client.put("/api/settings", json={"voice": "off"}).get_json()["voice"], "off")
         self.assertEqual(self.client.put("/api/settings", json={"voice": "nimporte"}).status_code, 400)
         self.client.put("/api/settings", json={"voice": "laps"})
+        res = self.client.put("/api/settings", json={"voice_rate": "lent", "voice_volume": 80, "overlay": "off"}).get_json()
+        self.assertEqual((res["voice_rate"], res["voice_volume"], res["overlay"]), ("lent", "80", "off"))
+        self.assertEqual((telemetry.speaker.rate, telemetry.speaker.volume), (-2, 80))
+        self.assertEqual(self.client.put("/api/settings", json={"voice_volume": 150}).status_code, 400)
+        self.assertEqual(self.client.put("/api/settings", json={"voice_rate": "turbo"}).status_code, 400)
+        self.assertEqual(self.client.post("/api/voice-test").status_code, 204)
+        self.client.put("/api/settings", json={"voice_rate": "normal", "voice_volume": 100, "overlay": "on"})
 
     def test_compare_sessions(self):
         a, b = self.sessions
