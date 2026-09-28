@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>iRacing Telemetry</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/uPlot.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+<header class="topbar">
+    <div class="brand">🏁 iRacing Telemetry</div>
+    <nav class="tabs" role="tablist">
+        <button class="tab active" type="button" data-view="sessions">Sessions</button>
+        <button class="tab" type="button" data-view="compare">Comparer</button>
+        <button class="tab" type="button" data-view="progress">Progression</button>
+    </nav>
+    <label class="voice-select" title="Annonces vocales">🔊
+        <select id="voice-mode" aria-label="Annonces vocales">
+            <option value="off">Voix coupée</option>
+            <option value="records">Records seulement</option>
+            <option value="laps">Chaque tour</option>
+        </select>
+    </label>
+    <details class="settings">
+        <summary title="Réglages" aria-label="Réglages">⚙</summary>
+        <div class="settings-panel">
+            <div class="settings-title">Voix</div>
+            <label class="setting">Volume <span id="volume-value">100</span>
+                <input type="range" id="voice-volume" min="0" max="100" step="5" value="100">
+            </label>
+            <label class="setting">Débit
+                <select id="voice-rate">
+                    <option value="lent">Lent (plus compréhensible)</option>
+                    <option value="normal">Normal</option>
+                    <option value="rapide">Rapide</option>
+                </select>
+            </label>
+            <button class="btn" type="button" id="voice-test">🔊 Tester la voix</button>
+            <p class="settings-hint">La voix est déjà au maximum à 100. Si le jeu la couvre : dans le
+                <b>mélangeur de volume</b> de Windows (clic droit sur l'icône du son), monte « Windows PowerShell »
+                et baisse iRacing, ou baisse le volume général dans les options audio d'iRacing.</p>
+            <div class="settings-title">Overlay</div>
+            <label class="setting setting-inline"><input type="checkbox" id="overlay-enabled">
+                Fenêtre du delta en direct <span class="muted">(au prochain lancement)</span></label>
+        </div>
+    </details>
+    <button class="level-chip" type="button" data-view="progress" title="Voir ta progression">
+        <span class="level-num" id="level-num">Niv. 1</span>
+        <span class="level-bar"><span class="level-fill" id="level-fill"></span></span>
+    </button>
+    <div class="status-pill" id="status"><span class="dot"></span><span id="status-text">Hors ligne</span></div>
+    <div class="topbar-session" id="live-session">—</div>
+    <div class="live" id="live" hidden>
+        <div class="live-item"><span class="live-label">Rapport</span><span class="live-value" id="live-gear">—</span></div>
+        <div class="live-item"><span class="live-label">Vitesse</span><span class="live-value" id="live-speed">—</span></div>
+        <div class="live-item"><span class="live-label">Tour</span><span class="live-value" id="live-laptime">—</span></div>
+        <div class="live-bars">
+            <div class="bar-row"><span>Gaz</span><div class="bar"><div class="bar-fill throttle" id="live-throttle"></div></div></div>
+            <div class="bar-row"><span>Frein</span><div class="bar"><div class="bar-fill brake" id="live-brake"></div></div></div>
+        </div>
+    </div>
+</header>
+
+<div class="layout" id="view-sessions">
+    <aside class="sidebar">
+        <div class="sidebar-title">Sessions</div>
+        <ul class="session-list" id="session-list"></ul>
+        <div class="empty small" id="sessions-empty">Aucune session enregistrée.<br>Lance iRacing et monte en piste.</div>
+        <div class="backup">
+            <div class="sidebar-title">Sauvegarde</div>
+            <a class="btn block" href="/api/backup" download>Sauvegarder la base</a>
+            <label class="btn block" for="restore-file">Restaurer une sauvegarde…</label>
+            <input type="file" id="restore-file" accept=".db,.sqlite,.sqlite3" hidden>
+            <div class="muted small-text">Garde tes sessions, ta télémétrie et ta progression (XP, objectifs).</div>
+        </div>
+    </aside>
+
+    <main class="main" id="main">
+        <div class="empty big" id="no-session">
+            Sélectionne une session à gauche, ou lance iRacing :<br>la session en cours s'affichera automatiquement.
+        </div>
+
+        <div id="session-view" hidden>
+            <section class="session-header">
+                <div class="session-edit">
+                    <input class="session-name" id="session-name" type="text" maxlength="120"
+                           placeholder="Nom de la session" aria-label="Nom de la session">
+                    <div class="muted" id="session-subtitle">—</div>
+                    <textarea class="session-note" id="session-note" rows="2" maxlength="2000"
+                              placeholder="Note libre : setup, conditions, ressenti… (ex. « nouveau setup, moins d'appui »)"
+                              aria-label="Note de la session"></textarea>
+                    <div class="save-state muted" id="save-state"></div>
+                </div>
+                <div class="actions">
+                    <button class="btn" id="compare-btn" type="button">Comparer…</button>
+                    <a class="btn" id="export-btn" download>Exporter CSV</a>
+                    <button class="btn danger" id="delete-btn" type="button">Supprimer la session</button>
+                </div>
+            </section>
+
+            <div class="training-banner" id="training-banner" hidden></div>
+
+            <section class="tiles">
+                <div class="tile"><div class="tile-label">Meilleur tour</div><div class="tile-value" id="stat-best">—</div></div>
+                <div class="tile"><div class="tile-label">Moyenne</div><div class="tile-value" id="stat-avg">—</div></div>
+                <div class="tile"><div class="tile-label">Régularité (écart-type)</div><div class="tile-value" id="stat-stdev">—</div></div>
+                <div class="tile"><div class="tile-label">Tour idéal</div><div class="tile-value" id="stat-ideal">—</div><div class="tile-note" id="stat-ideal-note"></div></div>
+                <div class="tile"><div class="tile-label">Tours propres / total</div><div class="tile-value" id="stat-laps">—</div></div>
+                <div class="tile"><div class="tile-label">Conso / tour</div><div class="tile-value" id="stat-fuel">—</div></div>
+            </section>
+
+            <section class="panel debrief" id="debrief-panel">
+                <div class="panel-title-row">
+                    <div class="panel-title">Débrief de la session</div>
+                    <button class="btn" type="button" id="radio-btn">🔊 Résumé radio</button>
+                </div>
+                <div class="radio-text muted" id="radio-text" hidden></div>
+                <div class="debrief-priority" id="debrief-priority" hidden></div>
+                <div class="debrief-grid" id="debrief-grid">
+                    <div>
+                        <div class="debrief-head good">✓ Points forts</div>
+                        <ul class="debrief-list" id="debrief-good"></ul>
+                    </div>
+                    <div>
+                        <div class="debrief-head bad">⚠ À améliorer</div>
+                        <ul class="debrief-list" id="debrief-bad"></ul>
+                    </div>
+                </div>
+                <div class="empty small" id="debrief-empty" hidden></div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-title">Temps au tour <span class="muted">(tours propres)</span></div>
+                <div class="chart" id="laptime-chart"></div>
+                <div class="empty small" id="laptime-empty">Pas encore de tour propre dans cette session.</div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-title">Tours <span class="muted">— clique sur un tour pour voir sa télémétrie</span></div>
+                <div class="table-wrap">
+                    <table class="laps">
+                        <thead>
+                        <tr>
+                            <th>Tour</th><th>Temps</th><th>Écart</th><th>Carbu</th><th>V max</th>
+                            <th>Gaz moy.</th><th>Frein moy.</th><th>Note</th><th></th>
+                        </tr>
+                        </thead>
+                        <tbody id="laps-body"></tbody>
+                    </table>
+                </div>
+                <div class="empty small" id="laps-empty">En attente d'un tour complet…</div>
+            </section>
+
+            <section class="panel" id="telemetry-panel">
+                <div class="panel-title-row">
+                    <div class="panel-title">Télémétrie</div>
+                    <div class="selectors">
+                        <label>Tour <select id="lap-select"></select></label>
+                        <label>Référence <select id="ref-select"></select></label>
+                    </div>
+                </div>
+                <div class="sectors" id="sectors"></div>
+                <div class="engineer" id="engineer" hidden>
+                    <div class="tele-title">Rapport de l'ingénieur <span class="muted" id="engineer-sub"></span></div>
+                    <div class="profile-chips" id="engineer-profile"></div>
+                    <ul class="improved" id="engineer-improved"></ul>
+                    <div class="engineer-list" id="engineer-remarks"></div>
+                </div>
+                <div class="analysis-grid">
+                    <div class="map-box">
+                        <div class="tele-title" id="map-title">Carte du circuit</div>
+                        <canvas id="track-map" aria-label="Carte du circuit colorée par le delta"></canvas>
+                        <div class="map-legend muted" id="map-legend"></div>
+                    </div>
+                    <div class="corners-box">
+                        <div class="tele-title">Virage par virage <span class="muted">— clique sur un virage pour zoomer</span></div>
+                        <div class="corners" id="corners"></div>
+                    </div>
+                </div>
+                <div class="hint muted">Glisse sur un graphique pour zoomer, double-clic pour revenir au tour complet.</div>
+                <div id="tele-charts"></div>
+                <div class="empty small" id="tele-empty" hidden></div>
+            </section>
+        </div>
+    </main>
+</div>
+
+<main class="progress-view" id="view-progress" hidden>
+    <section class="profile-card">
+        <div class="profile-level">
+            <div class="profile-level-num" id="profile-level">1</div>
+            <div class="profile-level-label">niveau</div>
+        </div>
+        <div class="profile-body">
+            <div class="profile-title" id="profile-title">Rookie</div>
+            <div class="xp-bar"><div class="xp-fill" id="profile-xp-fill"></div></div>
+            <div class="muted" id="profile-xp-text">0 / 100 XP</div>
+        </div>
+        <div class="profile-stats">
+            <div><span class="tile-value" id="profile-xp-total">0</span><div class="tile-label">XP au total</div></div>
+            <div><span class="tile-value" id="profile-completed">0</span><div class="tile-label">objectifs réussis</div></div>
+        </div>
+    </section>
+
+    <div class="empty big" id="no-cars">Aucune voiture pour l'instant.<br>Roule une session : ta voiture et ses objectifs apparaîtront automatiquement.</div>
+
+    <div id="progress-content" hidden>
+        <div class="panel-title">Voitures</div>
+        <div class="chips" id="car-chips"></div>
+
+        <section class="panel">
+            <div class="panel-title-row">
+                <div class="panel-title" id="car-objectives-title">Objectifs de la voiture</div>
+                <label class="toggle muted"><input type="checkbox" id="hide-done"> Masquer les objectifs réussis</label>
+            </div>
+            <div id="car-objectives"></div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-title">Objectifs par circuit <span class="muted">— temps cibles calculés à partir de ta propre référence</span></div>
+            <div class="chips" id="track-chips"></div>
+            <div class="track-info muted" id="track-info"></div>
+            <div class="debrief progress-debrief" id="progress-debrief" hidden>
+                <div class="tele-title">Débrief de progression <span class="muted" id="progress-period"></span></div>
+                <div class="debrief-priority" id="progress-priority" hidden></div>
+                <div class="debrief-grid" id="progress-grid">
+                    <div><div class="debrief-head good">✓ Ce qui progresse</div><ul class="debrief-list good-list" id="progress-good"></ul></div>
+                    <div><div class="debrief-head bad">⚠ Ce qui stagne ou recule</div><ul class="debrief-list bad-list" id="progress-bad"></ul></div>
+                </div>
+                <div class="empty small" id="progress-empty" hidden></div>
+            </div>
+            <div class="record-box" id="record-box" hidden>
+                <div class="tele-title">Historique du record <span class="muted">— plus bas = plus rapide</span></div>
+                <div class="chart" id="record-chart"></div>
+            </div>
+            <div id="track-objectives"></div>
+            <div class="empty small" id="no-tracks" hidden>Pas encore de circuit roulé avec cette voiture.</div>
+        </section>
+    </div>
+</main>
+
+<main class="progress-view" id="view-compare" hidden>
+    <section class="panel">
+        <div class="panel-title">Comparer deux sessions <span class="muted">— même voiture, même circuit</span></div>
+        <div class="compare-pickers">
+            <label>Session A (avant) <select id="compare-a"></select></label>
+            <button class="btn" id="compare-swap" type="button" title="Inverser A et B" aria-label="Inverser A et B">⇄</button>
+            <label>Session B (après) <select id="compare-b"></select></label>
+        </div>
+        <div class="empty small" id="compare-empty">Choisis deux sessions sur le même circuit avec la même voiture.</div>
+    </section>
+    <div id="compare-result" hidden>
+        <section class="compare-heads" id="compare-heads"></section>
+        <section class="panel">
+            <div class="panel-title">Verdict</div>
+            <ul class="verdict" id="compare-verdict"></ul>
+        </section>
+        <section class="panel">
+            <div class="panel-title">Chiffres</div>
+            <div class="table-wrap">
+                <table class="laps compare-table">
+                    <thead><tr><th>Mesure</th><th>A</th><th>B</th><th>Écart (B − A)</th></tr></thead>
+                    <tbody id="compare-metrics"></tbody>
+                </table>
+            </div>
+        </section>
+        <section class="panel" id="compare-sectors-panel">
+            <div class="panel-title">Meilleurs secteurs <span class="muted">— bleu : B plus rapide, rouge : B plus lent</span></div>
+            <div class="sectors" id="compare-sectors"></div>
+        </section>
+        <section class="panel" id="compare-corners-panel">
+            <div class="panel-title">Virage par virage <span class="muted">— meilleur tour de B comparé au meilleur tour de A</span></div>
+            <div class="corners" id="compare-corners"></div>
+        </section>
+    </div>
+</main>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="{{ url_for('static', filename='vendor/uPlot.iife.min.js') }}"></script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='progress.js') }}"></script>
+<script src="{{ url_for('static', filename='coaching.js') }}"></script>
+</body>
+</html>
