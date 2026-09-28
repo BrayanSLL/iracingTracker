@@ -211,13 +211,20 @@ class CoachingTest(unittest.TestCase):
 
     def test_overlay_shows_pedals(self):
         html = self.client.get("/overlay").get_data(as_text=True)
-        for element in ('id="throttle-fill"', 'id="brake-fill"', 'id="throttle-pct"', 'id="brake-pct"'):
+        for element in ('id="throttle-fill"', 'id="brake-fill"', 'id="throttle-pct"', 'id="brake-pct"',
+                        'id="trace"', 'id="gear"', 'id="speed"', 'id="wheel"'):
             self.assertIn(element, html)
         self.assertNotIn('id="delta"', html)  # le delta reste dans la page principale
         self.assertIn('id="live-delta"', self.client.get("/").get_data(as_text=True))
         status = self.client.get("/api/status").get_json()
         for key in ("throttle", "brake", "delta", "record", "predicted"):
             self.assertIn(key, status)
+        data = self.client.get("/api/inputs?since=0").get_json()
+        for key in ("connected", "on_track", "speed_kmh", "gear", "steer", "throttle", "brake", "clutch", "seq"):
+            self.assertIn(key, data)
+        self.assertTrue(all(len(s) == 3 and all(0 <= v <= 1 for v in s) for s in data["samples"]))
+        later = self.client.get(f"/api/inputs?since={data['seq']}").get_json()
+        self.assertEqual(len(later["samples"]), later["seq"] - data["seq"])  # seulement les nouveaux échantillons
 
     def test_compare_sessions(self):
         a, b = self.sessions

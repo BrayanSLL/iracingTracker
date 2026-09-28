@@ -42,6 +42,12 @@ def status():
     return jsonify(recorder.status())
 
 
+@app.get("/api/inputs")
+def inputs():
+    """Pédales en direct pour la petite fenêtre : `since` = dernier n° d'échantillon déjà reçu."""
+    return jsonify(recorder.inputs_since(request.args.get("since", 0, type=int)))
+
+
 @app.get("/api/sessions")
 def sessions():
     return jsonify(db.list_sessions())
@@ -305,7 +311,7 @@ def open_window(url, overlay=True):
         main_window = webview.create_window("iRacing Telemetry", url, width=1440, height=920, min_size=(960, 640))
         if overlay:
             # petite fenêtre sans bordure, toujours au premier plan (déplaçable à la souris)
-            overlay_window = webview.create_window("Pédales", f"{url}/overlay", width=120, height=180, x=40, y=40,
+            overlay_window = webview.create_window("Pédales", f"{url}/overlay", width=440, height=76, x=40, y=40,
                                                    frameless=True, easy_drag=True, on_top=True, resizable=False,
                                                    background_color="#121211")
             main_window.events.closed += lambda: overlay_window.destroy()

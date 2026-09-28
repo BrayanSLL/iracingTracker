@@ -129,9 +129,10 @@ pas le régime, les G ni l'ABS : leur analyse est partielle, et l'interface le s
 **En direct**
 - Statut de connexion, rapport, vitesse, chrono du tour, barres gaz et frein, et **delta** : ton écart avec
   ton record au même endroit de la piste, le temps prévu du tour et ton record.
-- **Overlay des pédales** : une petite fenêtre étroite, toujours au premier plan, sans bordure et déplaçable
-  à la souris. Elle affiche en direct la pression sur l'accélérateur et le frein, en barres verticales avec
-  leur pourcentage au-dessus. Pour qu'elle s'affiche par-dessus le jeu, lance iRacing en mode **fenêtré sans bordure**
+- **Overlay des pédales** : un bandeau fin, toujours au premier plan, sans bordure et déplaçable à la souris.
+  Il affiche en direct les courbes gaz et frein des 5 dernières secondes (à 60 Hz), des barres fines pour
+  l'embrayage, le frein et le gaz avec leur pourcentage au-dessus, le rapport, la vitesse et un volant qui
+  tourne avec le tien. Pour qu'elle s'affiche par-dessus le jeu, lance iRacing en mode **fenêtré sans bordure**
   (borderless) : aucune fenêtre ne peut passer devant un jeu en plein écran exclusif. Tu peux la désactiver
   dans le panneau ⚙.
 

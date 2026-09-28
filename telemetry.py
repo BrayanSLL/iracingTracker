@@ -1,4 +1,5 @@
 """Lecture de la télémétrie iRacing (mémoire partagée, 60 Hz) et enregistrement des tours."""
+import collections
 import re
 import threading
 import time
@@ -13,6 +14,7 @@ MS_TO_KMH = 3.6
 RAD_TO_DEG = 57.29578
 G = 9.81
 LAP_TIME_TIMEOUT = 3.0  # secondes d'attente max pour que LapLastLapTime se mette à jour
+INPUT_HISTORY = 360  # échantillons de pédales gardés pour la fenêtre des pédales (6 s à 60 Hz)
 
 
 class DataValidEvent:
@@ -75,6 +77,8 @@ class TelemetryRecorder:
         self.live = {}
         self.record = None  # {"lap_time", "d", "t"} : ton record sur ce couple voiture × circuit
         self.training = None  # virage choisi pour le mode entraînement
+        self.inputs = collections.deque(maxlen=INPUT_HISTORY)  # (n°, gaz, frein, embrayage) à 60 Hz
+        self.input_seq = 0
         self._reset_lap_tracking()
 
     # --- état interne -------------------------------------------------------
@@ -254,14 +258,18 @@ class TelemetryRecorder:
             throttle = ir["Throttle"] or 0.0
             brake = ir["Brake"] or 0.0
             gear = ir["Gear"] or 0
+            clutch = 1.0 - (ir["Clutch"] if ir["Clutch"] is not None else 1.0)  # iRacing : 1 = pédale relâchée
+            steer = (ir["SteeringWheelAngle"] or 0.0) * RAD_TO_DEG
             on_track = bool(ir["IsOnTrack"])
             on_pit_road = bool(ir["OnPitRoad"])
 
             current_lap_time = session_time - self.lap_start if self.lap_start is not None else None
             delta = self._live_delta(ir["LapDistPct"], current_lap_time) if on_track else None
             with self.lock:
+                self.input_seq += 1
+                self.inputs.append((self.input_seq, round(throttle, 3), round(brake, 3), round(clutch, 3)))
                 self.live = {"on_track": on_track, "speed_kmh": speed_kmh, "fuel_l": fuel,
-                             "throttle": throttle, "brake": brake, "gear": gear,
+                             "throttle": throttle, "brake": brake, "clutch": clutch, "steer": steer, "gear": gear,
                              "lap": ir["Lap"], "lap_time": ir["LapCurrentLapTime"],
                              "delta": delta,
                              "record": self.record["lap_time"] if self.record else None,
@@ -414,6 +422,16 @@ class TelemetryRecorder:
 
     def start(self):
         threading.Thread(target=self.run, daemon=True, name="telemetry").start()
+
+    def inputs_since(self, since):
+        """Entrées pilote pour la fenêtre des pédales : valeurs en direct et échantillons après `since`."""
+        with self.lock:
+            live = self.live if self.connected else {}
+            samples = [s[1:] for s in self.inputs if s[0] > since]
+            return {"connected": self.connected, "on_track": bool(live.get("on_track")),
+                    "speed_kmh": live.get("speed_kmh"), "gear": live.get("gear"), "steer": live.get("steer"),
+                    "throttle": live.get("throttle"), "brake": live.get("brake"), "clutch": live.get("clutch"),
+                    "seq": self.input_seq, "samples": samples}
 
     def status(self):
         with self.lock:

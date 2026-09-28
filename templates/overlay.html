@@ -4,53 +4,130 @@
     <meta charset="utf-8">
     <title>Pédales</title>
     <style>
-        :root { --bg: #121211; --text: #fff; --muted: #8f8e85; --throttle: #199e70; --brake: #e66767; }
+        :root {
+            --bg: #121211; --panel: #1c1c1b; --grid: #2c2c2a; --text: #fff; --muted: #8f8e85;
+            --throttle: #2fbf71; --brake: #e5484d; --clutch: #3ec6d6; --gear: #f5c518;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body { height: 100%; }
         body {
             background: var(--bg); color: var(--text); overflow: hidden; user-select: none; cursor: move;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-variant-numeric: tabular-nums;
-            display: flex; justify-content: center; gap: 10px; padding: 8px 10px;
+            display: flex; align-items: stretch; gap: 8px; padding: 6px 8px;
             border: 1px solid #333331;
         }
-        .pedal { width: 40px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
-        .pct { font-size: 13px; font-weight: 700; white-space: nowrap; }
-        .bar { flex: 1; width: 100%; background: #262624; border-radius: 3px; position: relative; overflow: hidden; }
+        body.off { opacity: .55; }
+        #trace { flex: 1; min-width: 0; height: 100%; background: var(--panel); border-radius: 3px; display: block; }
+        .bars { display: flex; gap: 3px; }
+        .pedal { width: 22px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+        .pct { font-size: 10px; font-weight: 700; line-height: 1; }
+        .bar { flex: 1; width: 8px; background: var(--panel); border-radius: 2px; position: relative; overflow: hidden; }
         .fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; }
-        .name { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
-        #throttle-fill { background: var(--throttle); }
-        #brake-fill { background: var(--brake); }
-        body.off .pct { color: var(--muted); }
+        #clutch-fill { background: var(--clutch); } #clutch-pct { color: var(--clutch); }
+        #brake-fill { background: var(--brake); } #brake-pct { color: var(--brake); }
+        #throttle-fill { background: var(--throttle); } #throttle-pct { color: var(--throttle); }
+        .gear {
+            align-self: center; width: 38px; height: 44px; display: grid; place-items: center;
+            background: var(--panel); color: var(--gear); font-size: 30px; font-weight: 800; border-radius: 3px;
+        }
+        .speed { align-self: center; width: 48px; text-align: center; line-height: 1; }
+        .speed b { display: block; font-size: 22px; font-weight: 700; }
+        .speed span { font-size: 11px; color: var(--muted); }
+        .wheel { align-self: center; width: 46px; height: 46px; }
     </style>
 </head>
 <body class="off" title="iRacing non lancé">
-<div class="pedal"><span class="pct" id="throttle-pct">0 %</span><div class="bar"><div class="fill" id="throttle-fill"></div></div><span class="name">Gaz</span></div>
-<div class="pedal"><span class="pct" id="brake-pct">0 %</span><div class="bar"><div class="fill" id="brake-fill"></div></div><span class="name">Frein</span></div>
+<canvas id="trace" aria-label="Courbes gaz et frein des dernières secondes"></canvas>
+<div class="bars" aria-label="Pédales">
+    <div class="pedal" title="Embrayage"><span class="pct" id="clutch-pct">0</span><div class="bar"><div class="fill" id="clutch-fill"></div></div></div>
+    <div class="pedal" title="Frein"><span class="pct" id="brake-pct">0</span><div class="bar"><div class="fill" id="brake-fill"></div></div></div>
+    <div class="pedal" title="Gaz"><span class="pct" id="throttle-pct">0</span><div class="bar"><div class="fill" id="throttle-fill"></div></div></div>
+</div>
+<div class="gear" id="gear" title="Rapport">N</div>
+<div class="speed"><b id="speed">0</b><span>km/h</span></div>
+<svg class="wheel" id="wheel" viewBox="-50 -50 100 100" aria-label="Volant">
+    <circle r="42" fill="none" stroke="#e8e8e3" stroke-width="9"/>
+    <circle r="11" fill="#e8e8e3"/>
+    <path d="M-40 4 L-10 4 M10 4 L40 4 M0 12 L0 40" stroke="#e8e8e3" stroke-width="9" stroke-linecap="round"/>
+    <path d="M-7 -46 A46 46 0 0 1 7 -46" stroke="#e5484d" stroke-width="10" fill="none"/>
+</svg>
 
 <script>
     const $ = id => document.getElementById(id);
+    const HISTORY = 300;  // échantillons affichés (5 s à 60 Hz)
+    const canvas = $('trace'), ctx = canvas.getContext('2d');
+    const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const colors = { throttle: css('--throttle'), brake: css('--brake'), clutch: css('--clutch'), grid: css('--grid') };
+    let samples = [];  // [gaz, frein, embrayage] entre 0 et 1
+    let seq = 0;
+
     function setPedal(name, value) {
-        // value entre 0 et 1 : hauteur de la barre et pourcentage au-dessus
         const pct = Math.round(Math.min(1, Math.max(0, value || 0)) * 100);
         $(`${name}-fill`).style.height = `${pct}%`;
-        $(`${name}-pct`).textContent = `${pct} %`;
+        $(`${name}-pct`).textContent = pct;
     }
-    function show(live, throttle, brake, title) {
+
+    function draw() {
+        const dpr = window.devicePixelRatio || 1;
+        const w = canvas.clientWidth, h = canvas.clientHeight;
+        if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+            canvas.width = Math.round(w * dpr);
+            canvas.height = Math.round(h * dpr);
+        }
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, w, h);
+        ctx.strokeStyle = colors.grid;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = 1; i < 5; i++) {  // une ligne par seconde
+            const x = Math.round(w * i / 5) + .5;
+            ctx.moveTo(x, 0); ctx.lineTo(x, h);
+        }
+        ctx.stroke();
+        const pad = 3, step = w / (HISTORY - 1), start = HISTORY - samples.length;
+        const line = (index, color) => {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            samples.forEach((s, i) => {
+                const x = (start + i) * step, y = pad + (1 - s[index]) * (h - 2 * pad);
+                i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+            });
+            ctx.stroke();
+        };
+        if (samples.some(s => s[2] > 0)) line(2, colors.clutch);
+        line(1, colors.brake);
+        line(0, colors.throttle);
+    }
+
+    function show(s) {
+        const live = s.connected && s.on_track;
         document.body.classList.toggle('off', !live);
-        document.body.title = title;
-        setPedal('throttle', live ? throttle : 0);
-        setPedal('brake', live ? brake : 0);
+        document.body.title = live ? '' : s.connected ? 'Pas en piste' : 'iRacing non lancé';
+        setPedal('throttle', live ? s.throttle : 0);
+        setPedal('brake', live ? s.brake : 0);
+        setPedal('clutch', live ? s.clutch : 0);
+        $('gear').textContent = !live ? '—' : s.gear === -1 ? 'R' : s.gear === 0 ? 'N' : (s.gear ?? '—');
+        $('speed').textContent = live ? Math.round(s.speed_kmh || 0) : 0;
+        $('wheel').style.transform = `rotate(${live ? -(s.steer || 0) : 0}deg)`;
     }
+
     async function refresh() {
         try {
-            const s = await (await fetch('/api/status')).json();
-            const live = s.connected && s.on_track;
-            show(live, s.throttle, s.brake, live ? '' : s.connected ? 'Pas en piste' : 'iRacing non lancé');
+            const s = await (await fetch(`/api/inputs?since=${seq}`)).json();
+            if (s.seq < seq) samples = [];  // application relancée : on repart de zéro
+            seq = s.seq;
+            if (s.connected && s.on_track) samples.push(...s.samples);
+            else samples = [];
+            if (samples.length > HISTORY) samples = samples.slice(-HISTORY);
+            show(s);
         } catch (err) {
-            show(false, 0, 0, 'Serveur injoignable');
+            show({ connected: false });
+            document.body.title = 'Serveur injoignable';
         }
+        draw();
+        setTimeout(refresh, 33);
     }
-    setInterval(refresh, 50);
     refresh();
 </script>
 </body>
