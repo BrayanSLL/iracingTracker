@@ -130,8 +130,8 @@ pas le régime, les G ni l'ABS : leur analyse est partielle, et l'interface le s
 **En direct**
 - Statut de connexion, rapport, vitesse, chrono du tour, barres gaz et frein.
 - **Overlay du delta** : une petite fenêtre toujours au premier plan, sans bordure et déplaçable à la souris.
-  Elle affiche en direct ton écart avec ton record au même endroit de la piste, le temps prévu du tour et
-  ton record. Pour qu'elle s'affiche par-dessus le jeu, lance iRacing en mode **fenêtré sans bordure**
+  Elle affiche en direct ton écart avec ton record au même endroit de la piste, le temps prévu du tour,
+  ton record, et la pression des pédales (gaz et frein) en barres verticales avec leur pourcentage. Pour qu'elle s'affiche par-dessus le jeu, lance iRacing en mode **fenêtré sans bordure**
   (borderless) : aucune fenêtre ne peut passer devant un jeu en plein écran exclusif. Tu peux la désactiver
   dans le panneau ⚙.
 

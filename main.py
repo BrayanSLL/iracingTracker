@@ -305,7 +305,7 @@ def open_window(url, overlay=True):
         main_window = webview.create_window("iRacing Telemetry", url, width=1440, height=920, min_size=(960, 640))
         if overlay:
             # petite fenêtre sans bordure, toujours au premier plan (déplaçable à la souris)
-            overlay_window = webview.create_window("Delta", f"{url}/overlay", width=300, height=128, x=40, y=40,
+            overlay_window = webview.create_window("Delta", f"{url}/overlay", width=400, height=136, x=40, y=40,
                                                    frameless=True, easy_drag=True, on_top=True, resizable=False,
                                                    background_color="#121211")
             main_window.events.closed += lambda: overlay_window.destroy()

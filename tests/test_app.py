@@ -209,6 +209,14 @@ class CoachingTest(unittest.TestCase):
         self.assertEqual(self.client.post("/api/voice-test").status_code, 204)
         self.client.put("/api/settings", json={"voice_rate": "normal", "voice_volume": 100, "overlay": "on"})
 
+    def test_overlay_shows_pedals(self):
+        html = self.client.get("/overlay").get_data(as_text=True)
+        for element in ('id="throttle-fill"', 'id="brake-fill"', 'id="throttle-pct"', 'id="brake-pct"'):
+            self.assertIn(element, html)
+        status = self.client.get("/api/status").get_json()
+        for key in ("throttle", "brake"):
+            self.assertIn(key, status)
+
     def test_compare_sessions(self):
         a, b = self.sessions
         data = self.client.get(f"/api/compare-sessions?a={a}&b={b}").get_json()
