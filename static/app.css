@@ -50,6 +50,8 @@ body {
 .live-item { display: flex; flex-direction: column; min-width: 64px; }
 .live-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; }
 .live-value { font-size: 18px; font-weight: 600; }
+.live-value.gain { color: var(--gain); }
+.live-value.loss { color: var(--loss); }
 .live-bars { display: flex; flex-direction: column; gap: 4px; width: 180px; }
 .bar-row { display: grid; grid-template-columns: 40px 1fr; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); }
 .bar { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }

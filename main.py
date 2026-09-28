@@ -3,7 +3,7 @@
     python main.py              # ouvre la fenêtre de l'application
     python main.py --browser    # ouvre l'interface dans le navigateur à la place
     python main.py --demo       # essaie l'application sans iRacing (voiture simulée)
-    http://127.0.0.1:5000/overlay  # delta en direct (ouvert automatiquement dans une petite fenêtre)
+    http://127.0.0.1:5000/overlay  # pédales en direct (ouvert automatiquement dans une petite fenêtre)
 """
 import argparse
 import csv
@@ -295,7 +295,7 @@ def unlocks():
 
 
 def open_window(url, overlay=True):
-    """Ouvre la fenêtre de l'application (pywebview) et l'overlay du delta en direct.
+    """Ouvre la fenêtre de l'application (pywebview) et l'overlay des pédales en direct.
 
     Se rabat sur le navigateur si pywebview n'est pas disponible.
     """
@@ -305,7 +305,7 @@ def open_window(url, overlay=True):
         main_window = webview.create_window("iRacing Telemetry", url, width=1440, height=920, min_size=(960, 640))
         if overlay:
             # petite fenêtre sans bordure, toujours au premier plan (déplaçable à la souris)
-            overlay_window = webview.create_window("Delta", f"{url}/overlay", width=400, height=136, x=40, y=40,
+            overlay_window = webview.create_window("Pédales", f"{url}/overlay", width=120, height=180, x=40, y=40,
                                                    frameless=True, easy_drag=True, on_top=True, resizable=False,
                                                    background_color="#121211")
             main_window.events.closed += lambda: overlay_window.destroy()
@@ -322,7 +322,7 @@ def main():
     parser = argparse.ArgumentParser(description="iRacing Telemetry Logger")
     parser.add_argument("--port", type=int, default=5000)
     parser.add_argument("--browser", action="store_true", help="ouvrir dans le navigateur au lieu d'une fenêtre")
-    parser.add_argument("--no-overlay", action="store_true", help="ne pas ouvrir la fenêtre du delta en direct")
+    parser.add_argument("--no-overlay", action="store_true", help="ne pas ouvrir la fenêtre des pédales en direct")
     parser.add_argument("--no-gui", action="store_true", help="serveur seul, sans ouvrir d'interface")
     parser.add_argument("--demo", action="store_true", help="voiture simulée, sans iRacing")
     parser.add_argument("--demo-speed", type=float, default=1.0, help="accélération de la démo (ex. 5)")

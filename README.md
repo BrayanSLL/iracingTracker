@@ -94,8 +94,7 @@ pas le régime, les G ni l'ABS : leur analyse est partielle, et l'interface le s
   03/09 », « Ta régularité en S5 stagne », « Virage 4 stagne ». Il faut au moins 2 sessions avec 3 tours propres.
 - **Mode entraînement** : dans l'analyse virage par virage, « 🎯 S'entraîner sur ce virage ». Chaque passage dans
   ce virage est chronométré (entrée et sortie interpolées entre deux mesures) et comparé au même virage de ton
-  record. L'overlay n'affiche plus que ce virage : l'écart en direct pendant le passage, puis le résultat.
-  Un bandeau dans la session liste tes derniers passages. « Arrêter l'entraînement » revient au delta normal.
+  record. Un bandeau dans la session affiche l'écart en direct pendant le passage, puis liste tes derniers passages. « Arrêter l'entraînement » revient au delta normal.
 - **Annonces vocales** avec la synthèse vocale de Windows (rien à installer ; une voix française est utilisée si
   elle est présente). Choix dans la barre du haut :
   *Voix coupée*, *Records seulement* (« Record battu ! 1 22 4, moins 0 virgule 3 ») ou *Chaque tour*
@@ -128,14 +127,15 @@ pas le régime, les G ni l'ABS : leur analyse est partielle, et l'interface le s
 **Progression** : 115 objectifs par voiture et par circuit, XP et niveaux (voir plus bas).
 
 **En direct**
-- Statut de connexion, rapport, vitesse, chrono du tour, barres gaz et frein.
-- **Overlay du delta** : une petite fenêtre toujours au premier plan, sans bordure et déplaçable à la souris.
-  Elle affiche en direct ton écart avec ton record au même endroit de la piste, le temps prévu du tour,
-  ton record, et la pression des pédales (gaz et frein) en barres verticales avec leur pourcentage. Pour qu'elle s'affiche par-dessus le jeu, lance iRacing en mode **fenêtré sans bordure**
+- Statut de connexion, rapport, vitesse, chrono du tour, barres gaz et frein, et **delta** : ton écart avec
+  ton record au même endroit de la piste, le temps prévu du tour et ton record.
+- **Overlay des pédales** : une petite fenêtre étroite, toujours au premier plan, sans bordure et déplaçable
+  à la souris. Elle affiche en direct la pression sur l'accélérateur et le frein, en barres verticales avec
+  leur pourcentage au-dessus. Pour qu'elle s'affiche par-dessus le jeu, lance iRacing en mode **fenêtré sans bordure**
   (borderless) : aucune fenêtre ne peut passer devant un jeu en plein écran exclusif. Tu peux la désactiver
   dans le panneau ⚙.
 
-![Overlay du delta en direct](docs/overlay.png)
+![Overlay des pédales en direct](docs/overlay.png)
 
 **Sessions**
 - Une session est créée à chaque connexion et à chaque changement de session iRacing (essais → qualif → course),
@@ -187,7 +187,7 @@ L'application peut rester ouverte en permanence, elle se reconnecte toute seule 
 | `--demo-speed 10` | Démo accélérée (10× plus rapide) |
 | `--browser` | Ouvre l'interface dans le navigateur au lieu d'une fenêtre |
 | `--no-gui` | Serveur seul, interface à ouvrir à la main sur `http://127.0.0.1:5000` |
-| `--no-overlay` | N'ouvre pas la fenêtre du delta en direct pour ce lancement. Pour la désactiver durablement : ⚙ → « Fenêtre du delta en direct ». Elle reste accessible sur `http://127.0.0.1:5000/overlay`. |
+| `--no-overlay` | N'ouvre pas la fenêtre des pédales en direct pour ce lancement. Pour la désactiver durablement : ⚙ → « Fenêtre des pédales en direct ». Elle reste accessible sur `http://127.0.0.1:5000/overlay`. |
 | `--port 5001` | Change le port local |
 
 Pour essayer tout de suite : `python main.py --demo --demo-speed 10`
@@ -367,7 +367,7 @@ Ce projet n'est ni affilié à iRacing.com Motorsport Simulations, ni soutenu pa
 | Pas de voix | Vérifie le réglage 🔊 dans la barre du haut, puis ⚙ → « Tester la voix ». Sans voix française installée (Paramètres Windows → Heure et langue → Voix), Windows lit avec sa voix par défaut. |
 | La voix est couverte par le jeu | Elle est déjà au maximum de la synthèse vocale de Windows. Dans le **mélangeur de volume** de Windows (clic droit sur l'icône du son), monte « Windows PowerShell » et baisse iRacing, ou baisse le volume général dans les options audio d'iRacing. Le débit « Lent » (⚙) rend aussi la voix plus compréhensible. |
 | L'overlay n'apparaît pas par-dessus le jeu | Passe iRacing en mode fenêtré sans bordure (Options → Graphismes). |
-| Je n'utilise pas l'overlay | ⚙ → décoche « Fenêtre du delta en direct » : il ne s'ouvrira plus au prochain lancement. |
+| Je n'utilise pas l'overlay | ⚙ → décoche « Fenêtre des pédales en direct » : il ne s'ouvrira plus au prochain lancement. |
 | Port 5000 déjà utilisé | `python main.py --port 5001` |
 
 ## Ressources

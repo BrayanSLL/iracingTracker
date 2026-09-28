@@ -213,8 +213,10 @@ class CoachingTest(unittest.TestCase):
         html = self.client.get("/overlay").get_data(as_text=True)
         for element in ('id="throttle-fill"', 'id="brake-fill"', 'id="throttle-pct"', 'id="brake-pct"'):
             self.assertIn(element, html)
+        self.assertNotIn('id="delta"', html)  # le delta reste dans la page principale
+        self.assertIn('id="live-delta"', self.client.get("/").get_data(as_text=True))
         status = self.client.get("/api/status").get_json()
-        for key in ("throttle", "brake"):
+        for key in ("throttle", "brake", "delta", "record", "predicted"):
             self.assertIn(key, status)
 
     def test_compare_sessions(self):

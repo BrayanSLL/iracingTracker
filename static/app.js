@@ -63,6 +63,10 @@ async function pollStatus() {
             $('live-gear').textContent = s.gear === -1 ? 'R' : s.gear === 0 ? 'N' : (s.gear ?? '—');
             $('live-speed').textContent = fmtNum(s.speed_kmh, 0, ' km/h');
             $('live-laptime').textContent = fmtTime(s.lap_time);
+            $('live-delta').textContent = s.record == null ? 'Pas de record' : fmtDelta(s.delta, 2);
+            $('live-delta').className = 'live-value' + (s.delta == null ? '' : s.delta > 0 ? ' loss' : ' gain');
+            $('live-predicted').textContent = fmtTime(s.predicted);
+            $('live-record').textContent = fmtTime(s.record);
             $('live-throttle').style.width = `${Math.round((s.throttle || 0) * 100)}%`;
             $('live-brake').style.width = `${Math.round((s.brake || 0) * 100)}%`;
         }

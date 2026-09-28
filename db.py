@@ -314,7 +314,7 @@ DEFAULT_SETTINGS = {
     "voice": "records",   # off | records | laps (chaque tour) ; le mode entraînement parle toujours si voice != off
     "voice_rate": "normal",   # lent | normal | rapide
     "voice_volume": "100",    # 0 à 100 (100 = maximum de la synthèse vocale Windows)
-    "overlay": "on",          # on | off : fenêtre du delta en direct (pris en compte au prochain lancement)
+    "overlay": "on",          # on | off : fenêtre des pédales en direct (pris en compte au prochain lancement)
 }
 
 
