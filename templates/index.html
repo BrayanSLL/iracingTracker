@@ -22,6 +22,29 @@
             <option value="laps">Chaque tour</option>
         </select>
     </label>
+    <details class="settings">
+        <summary title="Réglages" aria-label="Réglages">⚙</summary>
+        <div class="settings-panel">
+            <div class="settings-title">Voix</div>
+            <label class="setting">Volume <span id="volume-value">100</span>
+                <input type="range" id="voice-volume" min="0" max="100" step="5" value="100">
+            </label>
+            <label class="setting">Débit
+                <select id="voice-rate">
+                    <option value="lent">Lent (plus compréhensible)</option>
+                    <option value="normal">Normal</option>
+                    <option value="rapide">Rapide</option>
+                </select>
+            </label>
+            <button class="btn" type="button" id="voice-test">🔊 Tester la voix</button>
+            <p class="settings-hint">La voix est déjà au maximum à 100. Si le jeu la couvre : dans le
+                <b>mélangeur de volume</b> de Windows (clic droit sur l'icône du son), monte « Windows PowerShell »
+                et baisse iRacing, ou baisse le volume général dans les options audio d'iRacing.</p>
+            <div class="settings-title">Overlay</div>
+            <label class="setting setting-inline"><input type="checkbox" id="overlay-enabled">
+                Fenêtre du delta en direct <span class="muted">(au prochain lancement)</span></label>
+        </div>
+    </details>
     <button class="level-chip" type="button" data-view="progress" title="Voir ta progression">
         <span class="level-num" id="level-num">Niv. 1</span>
         <span class="level-bar"><span class="level-fill" id="level-fill"></span></span>
