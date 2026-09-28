@@ -6,7 +6,7 @@
     <style>
         :root {
             --bg: #121211; --panel: #1c1c1b; --grid: #2c2c2a; --text: #fff; --muted: #8f8e85;
-            --throttle: #2fbf71; --brake: #e5484d; --clutch: #3ec6d6; --gear: #f5c518;
+            --throttle: #2fbf71; --brake: #e5484d; --gear: #f5c518;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body { height: 100%; }
@@ -23,7 +23,6 @@
         .pct { font-size: 10px; font-weight: 700; line-height: 1; }
         .bar { flex: 1; width: 8px; background: var(--panel); border-radius: 2px; position: relative; overflow: hidden; }
         .fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; }
-        #clutch-fill { background: var(--clutch); } #clutch-pct { color: var(--clutch); }
         #brake-fill { background: var(--brake); } #brake-pct { color: var(--brake); }
         #throttle-fill { background: var(--throttle); } #throttle-pct { color: var(--throttle); }
         .gear {
@@ -39,7 +38,6 @@
 <body class="off" title="iRacing non lancé">
 <canvas id="trace" aria-label="Courbes gaz et frein des dernières secondes"></canvas>
 <div class="bars" aria-label="Pédales">
-    <div class="pedal" title="Embrayage"><span class="pct" id="clutch-pct">0</span><div class="bar"><div class="fill" id="clutch-fill"></div></div></div>
     <div class="pedal" title="Frein"><span class="pct" id="brake-pct">0</span><div class="bar"><div class="fill" id="brake-fill"></div></div></div>
     <div class="pedal" title="Gaz"><span class="pct" id="throttle-pct">0</span><div class="bar"><div class="fill" id="throttle-fill"></div></div></div>
 </div>
@@ -57,8 +55,8 @@
     const HISTORY = 300;  // échantillons affichés (5 s à 60 Hz)
     const canvas = $('trace'), ctx = canvas.getContext('2d');
     const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    const colors = { throttle: css('--throttle'), brake: css('--brake'), clutch: css('--clutch'), grid: css('--grid') };
-    let samples = [];  // [gaz, frein, embrayage] entre 0 et 1
+    const colors = { throttle: css('--throttle'), brake: css('--brake'), grid: css('--grid') };
+    let samples = [];  // [gaz, frein] entre 0 et 1
     let seq = 0;
 
     function setPedal(name, value) {
@@ -95,7 +93,6 @@
             });
             ctx.stroke();
         };
-        if (samples.some(s => s[2] > 0)) line(2, colors.clutch);
         line(1, colors.brake);
         line(0, colors.throttle);
     }
@@ -106,7 +103,6 @@
         document.body.title = live ? '' : s.connected ? 'Pas en piste' : 'iRacing non lancé';
         setPedal('throttle', live ? s.throttle : 0);
         setPedal('brake', live ? s.brake : 0);
-        setPedal('clutch', live ? s.clutch : 0);
         $('gear').textContent = !live ? '—' : s.gear === -1 ? 'R' : s.gear === 0 ? 'N' : (s.gear ?? '—');
         $('speed').textContent = live ? Math.round(s.speed_kmh || 0) : 0;
         $('wheel').style.transform = `rotate(${live ? -(s.steer || 0) : 0}deg)`;

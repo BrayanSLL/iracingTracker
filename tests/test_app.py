@@ -220,9 +220,9 @@ class CoachingTest(unittest.TestCase):
         for key in ("throttle", "brake", "delta", "record", "predicted"):
             self.assertIn(key, status)
         data = self.client.get("/api/inputs?since=0").get_json()
-        for key in ("connected", "on_track", "speed_kmh", "gear", "steer", "throttle", "brake", "clutch", "seq"):
+        for key in ("connected", "on_track", "speed_kmh", "gear", "steer", "throttle", "brake", "seq"):
             self.assertIn(key, data)
-        self.assertTrue(all(len(s) == 3 and all(0 <= v <= 1 for v in s) for s in data["samples"]))
+        self.assertTrue(all(len(s) == 2 and all(0 <= v <= 1 for v in s) for s in data["samples"]))
         later = self.client.get(f"/api/inputs?since={data['seq']}").get_json()
         self.assertEqual(len(later["samples"]), later["seq"] - data["seq"])  # seulement les nouveaux échantillons
 
