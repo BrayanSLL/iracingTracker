@@ -57,7 +57,7 @@ async function pollStatus() {
         const pill = $('status');
         pill.className = 'status-pill' + (s.connected ? (s.on_track ? ' on-track' : ' connected') : '');
         $('status-text').textContent = !s.connected ? 'Hors ligne' : s.on_track ? 'En piste' : 'Connecté';
-        $('live-session').textContent = s.connected ? [s.track, s.car].filter(Boolean).join(' · ') : '—';
+        $('live-session').textContent = s.connected ? [s.sim, s.track, s.car].filter(Boolean).join(' · ') : '—';
         $('live').hidden = !(s.connected && s.on_track);
         if (s.connected) {
             $('live-gear').textContent = s.gear === -1 ? 'R' : s.gear === 0 ? 'N' : (s.gear ?? '—');

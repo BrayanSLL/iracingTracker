@@ -1,6 +1,6 @@
 # iRacing Telemetry Logger
 
-Une application qui enregistre automatiquement tes tours iRacing : **temps au tour, moyenne, régularité,
+Une application qui enregistre automatiquement tes tours **iRacing** et **Le Mans Ultimate** : **temps au tour, moyenne, régularité,
 et télémétrie complète de l'accélérateur et du frein (60 mesures par seconde)**, avec une interface
 graphique pour analyser où tu perds du temps. Tout est stocké en local dans une base SQLite, session
 par session, et tu supprimes ce que tu veux depuis l'interface. 🏁
@@ -9,8 +9,12 @@ par session, et tu supprimes ce que tu veux depuis l'interface. 🏁
 
 ![Progression](docs/progression.png)
 
-> **Windows uniquement pour la capture** : iRacing ne tourne que sous Windows, et ses données ne sont
-> lisibles que depuis la même machine. Le mode démo, lui, fonctionne partout.
+> **Windows uniquement pour la capture** : iRacing et Le Mans Ultimate ne tournent que sous Windows, et leurs
+> données ne sont lisibles que depuis la même machine. Le mode démo, lui, fonctionne partout.
+
+> **Le Mans Ultimate : prise en charge nouvelle, pas encore essayée dans le jeu.** Elle est vérifiée par des
+> tests sur une copie de la mémoire partagée du jeu, pas encore en conditions réelles. Si quelque chose cloche,
+> ouvre une issue : voir [Le Mans Ultimate](#le-mans-ultimate).
 
 > **Statut : en développement actif.** Testé en conditions réelles sur iRacing : capture des tours, temps
 > au tour, carte du circuit, voix, overlay et fenêtre de l'application fonctionnent. Les seuils de l'analyse
@@ -154,7 +158,7 @@ pas le régime, les G ni l'ABS : leur analyse est partielle, et l'interface le s
 
 ## Installation
 
-Prérequis : **Windows**, **iRacing**, **Python 3.9+** ([python.org](https://www.python.org/downloads/),
+Prérequis : **Windows**, **iRacing** et/ou **Le Mans Ultimate**, **Python 3.9+** ([python.org](https://www.python.org/downloads/),
 coche « Add Python to PATH » pendant l'installation).
 
 ```bash
@@ -171,6 +175,7 @@ Dans Git Bash, l'activation se fait avec `source venv/Scripts/activate`, et l'in
 `python -m pip install -r requirements.txt`.
 
 Dépendances : `flask` (serveur local), `pyirsdk` (lecture d'iRacing), `pywebview` (fenêtre de l'application).
+Le Mans Ultimate ne demande rien de plus : sa mémoire partagée est lue directement.
 
 ## Lancer l'application
 
@@ -178,9 +183,10 @@ Dépendances : `flask` (serveur local), `pyirsdk` (lecture d'iRacing), `pywebvie
 python main.py
 ```
 
-La fenêtre de l'application s'ouvre directement. Lance ensuite iRacing et monte en piste : la session
-apparaît toute seule, et chaque tour s'ajoute environ une seconde après le passage de la ligne.
-L'application peut rester ouverte en permanence, elle se reconnecte toute seule quand iRacing démarre ou s'arrête.
+La fenêtre de l'application s'ouvre directement. Lance ensuite iRacing ou Le Mans Ultimate et monte en piste :
+le simulateur est détecté tout seul, la session apparaît, et chaque tour s'ajoute environ une seconde après le
+passage de la ligne. L'application peut rester ouverte en permanence, elle se reconnecte toute seule quand un
+simulateur démarre ou s'arrête.
 
 | Option | Effet |
 |---|---|
@@ -316,6 +322,26 @@ Un tour gêné par le trafic fausse aussi la comparaison.
 - Les **températures et l'usure des pneus** ne sont mises à jour **qu'aux stands**. La température des freins et les dégâts ne sont pas disponibles.
 - Pour les autres pilotes, seuls les temps et positions des voitures de ta session sont accessibles, pas leur télémétrie.
 
+## Le Mans Ultimate
+
+LMU publie sa télémétrie dans une mémoire partagée intégrée au jeu (`LMU_Data`, décrite dans
+`Support\SharedMemoryInterface` du dossier du jeu). `lmu.py` la relit et la traduit dans les mêmes variables
+qu'iRacing : tout le reste (tours, analyse, objectifs, overlay) fonctionne pareil. Rien à installer ni à activer
+dans le jeu.
+
+Différences avec iRacing :
+- **Voiture** : le modèle (« Ferrari 499P »), pas le nom de l'équipe, pour que tes objectifs et records
+  restent groupés par voiture.
+- **Distance dans le tour** : LMU ne la met à jour que 5 fois par seconde. Entre deux mises à jour,
+  l'application l'estime avec la vitesse, ce qui garde 60 points par seconde sur les courbes.
+- **Tours hors limites de piste** : un tour invalidé par LMU est enregistré sans temps, comme un tour
+  invalide d'iRacing. Il ne compte ni pour les records ni pour la moyenne.
+- **Carte du circuit** : construite à partir des positions de la voiture dans le jeu.
+- **Passages de rapport** : LMU ne donne pas le régime conseillé pour passer, seulement le régime maximum.
+  Les remarques « tu passes trop tôt » ou « rapport trop long » ne sont donc pas faites, celles sur le rupteur oui.
+- Si un jour une mise à jour du jeu change la disposition de la mémoire partagée, la lecture échoue avec un
+  message dans la console : il faudra mettre à jour `lmu.py`.
+
 ## Feuille de route
 
 Idées ouvertes aux contributions. Si l'une d'elles t'intéresse, ouvre d'abord une issue pour en discuter.
@@ -360,14 +386,14 @@ Ce projet n'est ni affilié à iRacing.com Motorsport Simulations, ni soutenu pa
 
 | Problème | Solution |
 |---|---|
-| Statut « Hors ligne » | iRacing n'est pas lancé, ou tu es encore dans le launcher. Lance une session. |
+| Statut « Hors ligne » | Aucun simulateur lancé, ou tu es encore dans le launcher / les menus. Lance une session. |
 | « Connecté » mais aucun tour | Tu n'es pas dans la voiture (garage, replay). Monte en piste et termine un tour complet. |
 | Le premier tour est marqué « stand » | Normal : c'est l'out-lap. |
 | La fenêtre ne s'ouvre pas | L'application ouvre alors le navigateur. Tu peux aussi utiliser `python main.py --browser`. Sur Windows, pywebview a besoin de Microsoft Edge WebView2, déjà installé sur Windows 10 et 11 à jour. |
 | `ModuleNotFoundError` | Active l'environnement virtuel (`venv\Scripts\activate`), puis relance `pip install -r requirements.txt`. |
 | Pas de voix | Vérifie le réglage 🔊 dans la barre du haut, puis ⚙ → « Tester la voix ». Sans voix française installée (Paramètres Windows → Heure et langue → Voix), Windows lit avec sa voix par défaut. |
 | La voix est couverte par le jeu | Elle est déjà au maximum de la synthèse vocale de Windows. Dans le **mélangeur de volume** de Windows (clic droit sur l'icône du son), monte « Windows PowerShell » et baisse iRacing, ou baisse le volume général dans les options audio d'iRacing. Le débit « Lent » (⚙) rend aussi la voix plus compréhensible. |
-| L'overlay n'apparaît pas par-dessus le jeu | Passe iRacing en mode fenêtré sans bordure (Options → Graphismes). |
+| L'overlay n'apparaît pas par-dessus le jeu | Passe le jeu en mode fenêtré sans bordure (options graphiques d'iRacing ou de LMU). |
 | Je n'utilise pas l'overlay | ⚙ → décoche « Fenêtre des pédales en direct » : il ne s'ouvrira plus au prochain lancement. |
 | Port 5000 déjà utilisé | `python main.py --port 5001` |
 
@@ -375,5 +401,7 @@ Ce projet n'est ni affilié à iRacing.com Motorsport Simulations, ni soutenu pa
 
 - [pyirsdk](https://github.com/kutu/pyirsdk) : bibliothèque Python pour le SDK iRacing, avec la liste des variables disponibles
 - Forum iRacing, section *SDK* : documentation officielle
+- [pyLMUSharedMemory](https://github.com/TinyPedal/pyLMUSharedMemory) : description Python de la mémoire
+  partagée de Le Mans Ultimate, qui a servi de référence pour `lmu.py`
 
 **Bonne course ! 🏁**

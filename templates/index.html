@@ -39,7 +39,7 @@
             <button class="btn" type="button" id="voice-test">🔊 Tester la voix</button>
             <p class="settings-hint">La voix est déjà au maximum à 100. Si le jeu la couvre : dans le
                 <b>mélangeur de volume</b> de Windows (clic droit sur l'icône du son), monte « Windows PowerShell »
-                et baisse iRacing, ou baisse le volume général dans les options audio d'iRacing.</p>
+                et baisse le jeu, ou baisse le volume général dans les options audio du simulateur.</p>
             <div class="settings-title">Overlay</div>
             <label class="setting setting-inline"><input type="checkbox" id="overlay-enabled">
                 Fenêtre des pédales en direct <span class="muted">(au prochain lancement)</span></label>
@@ -69,7 +69,7 @@
     <aside class="sidebar">
         <div class="sidebar-title">Sessions</div>
         <ul class="session-list" id="session-list"></ul>
-        <div class="empty small" id="sessions-empty">Aucune session enregistrée.<br>Lance iRacing et monte en piste.</div>
+        <div class="empty small" id="sessions-empty">Aucune session enregistrée.<br>Lance iRacing ou Le Mans Ultimate et monte en piste.</div>
         <div class="backup">
             <div class="sidebar-title">Sauvegarde</div>
             <a class="btn block" href="/api/backup" download>Sauvegarder la base</a>
@@ -81,7 +81,7 @@
 
     <main class="main" id="main">
         <div class="empty big" id="no-session">
-            Sélectionne une session à gauche, ou lance iRacing :<br>la session en cours s'affichera automatiquement.
+            Sélectionne une session à gauche, ou lance iRacing ou Le Mans Ultimate :<br>la session en cours s'affichera automatiquement.
         </div>
 
         <div id="session-view" hidden>

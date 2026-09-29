@@ -1,4 +1,4 @@
-"""iRacing Telemetry Logger : capture iRacing + serveur local + fenêtre graphique.
+"""iRacing Telemetry Logger : capture iRacing / Le Mans Ultimate + serveur local + fenêtre graphique.
 
     python main.py              # ouvre la fenêtre de l'application
     python main.py --browser    # ouvre l'interface dans le navigateur à la place
@@ -168,7 +168,7 @@ def backup():
 @app.post("/api/restore")
 def restore():
     if recorder.status()["connected"]:
-        return jsonify({"error": "Ferme iRacing (ou quitte la session) avant de restaurer une sauvegarde."}), 409
+        return jsonify({"error": "Ferme le simulateur (ou quitte la session) avant de restaurer une sauvegarde."}), 409
     upload = request.files.get("file")
     if not upload:
         return jsonify({"error": "Aucun fichier reçu."}), 400
@@ -330,7 +330,7 @@ def main():
     parser.add_argument("--browser", action="store_true", help="ouvrir dans le navigateur au lieu d'une fenêtre")
     parser.add_argument("--no-overlay", action="store_true", help="ne pas ouvrir la fenêtre des pédales en direct")
     parser.add_argument("--no-gui", action="store_true", help="serveur seul, sans ouvrir d'interface")
-    parser.add_argument("--demo", action="store_true", help="voiture simulée, sans iRacing")
+    parser.add_argument("--demo", action="store_true", help="voiture simulée, sans simulateur")
     parser.add_argument("--demo-speed", type=float, default=1.0, help="accélération de la démo (ex. 5)")
     args = parser.parse_args()
 

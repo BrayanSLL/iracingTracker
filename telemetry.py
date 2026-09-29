@@ -1,4 +1,4 @@
-"""Lecture de la télémétrie iRacing (mémoire partagée, 60 Hz) et enregistrement des tours."""
+"""Lecture de la télémétrie (iRacing ou Le Mans Ultimate, mémoire partagée) et enregistrement des tours."""
 import collections
 import re
 import threading
@@ -60,15 +60,27 @@ def parse_track_length(text):
     return value * (1609.344 if match.group(2) == "mi" else 1000.0)
 
 
-class TelemetryRecorder:
-    """Lit iRacing, détecte les tours et enregistre chaque tour avec sa trace complète."""
+def default_sources():
+    """Simulateurs pris en charge, essayés dans cet ordre : (lecteur façon pyirsdk, attente, nom)."""
+    import lmu
+    sources = []
+    try:
+        import irsdk  # pip install pyirsdk
+        sources.append((irsdk.IRSDK(), DataValidEvent(), "iRacing"))
+    except ImportError:
+        print("[telemetry] pyirsdk absent : iRacing ne sera pas détecté (pip install pyirsdk)")
+    sources.append((lmu.LMUSDK(), lmu.LMUWaiter(), lmu.LMUSDK.name))
+    return sources
 
-    def __init__(self, ir=None, waiter=None):
-        if ir is None:
-            import irsdk  # pip install pyirsdk
-            ir = irsdk.IRSDK()
-        self.ir = ir
-        self.waiter = waiter or DataValidEvent()
+
+class TelemetryRecorder:
+    """Lit le simulateur lancé, détecte les tours et enregistre chaque tour avec sa trace complète."""
+
+    def __init__(self, ir=None, waiter=None, sources=None):
+        if ir is not None:
+            sources = [(ir, waiter or DataValidEvent(), getattr(ir, "name", "iRacing"))]
+        self.sources = sources or default_sources()
+        self.ir, self.waiter, self.sim = self.sources[0]
         self.lock = threading.Lock()
         self.connected = False
         self.session_id = None
@@ -114,12 +126,16 @@ class TelemetryRecorder:
                 self.connected = False
                 self.session_id = None
                 self.live = {}
-            print("[telemetry] iRacing déconnecté")
-        elif not self.connected and self.ir.startup() and self.ir.is_initialized and self.ir.is_connected:
-            with self.lock:
-                self.connected = True
-            self._reset_lap_tracking()
-            print("[telemetry] iRacing connecté")
+            print(f"[telemetry] {self.sim} déconnecté")
+        elif not self.connected:
+            for ir, waiter, sim in self.sources:  # le premier simulateur lancé l'emporte
+                if ir.startup() and ir.is_initialized and ir.is_connected:
+                    with self.lock:
+                        self.ir, self.waiter, self.sim = ir, waiter, sim
+                        self.connected = True
+                    self._reset_lap_tracking()
+                    print(f"[telemetry] {sim} connecté")
+                    break
         return self.connected
 
     def _start_session(self, session_num):
@@ -414,7 +430,7 @@ class TelemetryRecorder:
                     self.waiter.wait()
                     self._tick()
                 else:
-                    time.sleep(1)  # iRacing pas lancé : on réessaie chaque seconde
+                    time.sleep(1)  # aucun simulateur lancé : on réessaie chaque seconde
             except Exception as exc:  # on ne veut jamais tuer le thread
                 print(f"[telemetry] erreur : {exc!r}")
                 time.sleep(1)
@@ -434,6 +450,7 @@ class TelemetryRecorder:
 
     def status(self):
         with self.lock:
-            return {"connected": self.connected, "session_id": self.session_id,
+            return {"connected": self.connected, "sim": self.sim if self.connected else None,
+                    "session_id": self.session_id,
                     "track": self.track, "car": self.car, **self.live,
                     "training": self._training_status()}

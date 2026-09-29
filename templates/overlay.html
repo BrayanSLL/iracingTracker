@@ -35,7 +35,7 @@
         .wheel { align-self: center; width: 46px; height: 46px; }
     </style>
 </head>
-<body class="off" title="iRacing non lancé">
+<body class="off" title="Aucun simulateur lancé">
 <canvas id="trace" aria-label="Courbes gaz et frein des dernières secondes"></canvas>
 <div class="bars" aria-label="Pédales">
     <div class="pedal" title="Frein"><span class="pct" id="brake-pct">0</span><div class="bar"><div class="fill" id="brake-fill"></div></div></div>
@@ -100,7 +100,7 @@
     function show(s) {
         const live = s.connected && s.on_track;
         document.body.classList.toggle('off', !live);
-        document.body.title = live ? '' : s.connected ? 'Pas en piste' : 'iRacing non lancé';
+        document.body.title = live ? '' : s.connected ? 'Pas en piste' : 'Aucun simulateur lancé';
         setPedal('throttle', live ? s.throttle : 0);
         setPedal('brake', live ? s.brake : 0);
         $('gear').textContent = !live ? '—' : s.gear === -1 ? 'R' : s.gear === 0 ? 'N' : (s.gear ?? '—');

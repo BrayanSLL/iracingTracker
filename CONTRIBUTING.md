@@ -53,7 +53,8 @@ doit arriver avec ses tests.
 | Fichier | Rôle |
 |---|---|
 | `main.py` | Point d'entrée, API Flask, fenêtres (pywebview) |
-| `telemetry.py` | Lecture d'iRacing à 60 Hz, détection des tours, delta en direct, mode entraînement, annonces |
+| `lmu.py` | Lecture de Le Mans Ultimate (mémoire partagée), traduite dans les variables d'iRacing |
+| `telemetry.py` | Lecture du simulateur à 60 Hz, détection des tours, delta en direct, mode entraînement, annonces |
 | `analysis.py` | Nettoyage et alignement des traces, secteurs, virages, carte, statistiques |
 | `technique.py` | Analyse du pilotage façon ingénieur (seuils regroupés en haut du fichier) |
 | `debrief.py` | Débrief de session, comparaison de sessions, progression, habitudes, résumé radio |

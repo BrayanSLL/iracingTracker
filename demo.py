@@ -49,6 +49,8 @@ def speed_profile(corner_speeds, brake_offsets):
 
 
 class FakeIRSDK:
+    name = "Démo"
+
     def __init__(self, seed=None):
         self.rng = random.Random(seed)
         self.is_initialized = False
